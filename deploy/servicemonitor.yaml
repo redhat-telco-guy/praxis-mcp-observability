@@ -1,0 +1,166 @@
+# ============================================================
+#  Prometheus integration for Praxis MCP metrics
+#  Requires: OCP user workload monitoring enabled
+#    oc apply -f cluster-monitoring-config.yaml  (see below)
+# ============================================================
+
+# ── ServiceMonitor — tells Prometheus to scrape Praxis ──────
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: praxis-ai-metrics
+  labels:
+    app: praxis-ai
+spec:
+  selector:
+    matchLabels:
+      app: praxis-ai
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
+      metricRelabelings:
+        # Keep only praxis_mcp_* metrics to avoid noise
+        - sourceLabels: [__name__]
+          regex: "praxis_mcp_.*"
+          action: keep
+
+---
+# ── PrometheusRule — recording rules + alerts ───────────────
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: praxis-mcp-rules
+  labels:
+    app: praxis-ai
+    role: recording-rules
+spec:
+  groups:
+    # ── Recording rules ──
+    - name: mcp.recording
+      interval: 30s
+      rules:
+        # Overall MCP request rate (per second, 5m window)
+        - record: mcp:requests:rate5m
+          expr: sum(rate(praxis_mcp_requests_total[5m]))
+
+        # MCP request rate by method
+        - record: mcp:requests_by_method:rate5m
+          expr: sum by (method) (rate(praxis_mcp_requests_total[5m]))
+
+        # Tool call error ratio (0-1 scale)
+        - record: mcp:tool_errors:ratio5m
+          expr: |
+            sum(rate(praxis_mcp_tool_calls_total{status="error"}[5m]))
+            /
+            clamp_min(sum(rate(praxis_mcp_tool_calls_total[5m])), 1)
+
+        # Tool call rate by tool name
+        - record: mcp:tool_calls_by_name:rate5m
+          expr: sum by (tool) (rate(praxis_mcp_tool_calls_total[5m]))
+
+        # Rejection rate (requests/sec)
+        - record: mcp:rejections:rate5m
+          expr: sum(rate(praxis_mcp_filter_rejections_total[5m]))
+
+        # Rejection ratio vs total requests
+        - record: mcp:rejection:ratio5m
+          expr: |
+            sum(rate(praxis_mcp_filter_rejections_total[5m]))
+            /
+            clamp_min(sum(rate(praxis_mcp_requests_total[5m])), 1)
+
+    # ── Alerts ──
+    - name: mcp.alerts
+      rules:
+        # High rejection rate — clients are misconfigured
+        - alert: McpHighRejectionRate
+          expr: mcp:rejection:ratio5m > 0.10
+          for: 5m
+          labels:
+            severity: warning
+            component: mcp-filter
+          annotations:
+            summary: "MCP filter rejection rate above 10%"
+            description: >
+              More than 10% of MCP requests are being rejected by the
+              Praxis filter for the past 5 minutes. Current ratio:
+              {{ $value | humanizePercentage }}. Check client headers
+              and JSON-RPC payloads.
+
+        # Tool call error spike — upstream MCP server issue
+        - alert: McpToolCallErrorRate
+          expr: mcp:tool_errors:ratio5m > 0.25
+          for: 5m
+          labels:
+            severity: warning
+            component: mcp-upstream
+          annotations:
+            summary: "MCP tool call error rate above 25%"
+            description: >
+              More than 25% of tool calls are returning errors from
+              upstream MCP servers. Current error ratio:
+              {{ $value | humanizePercentage }}. Investigate upstream
+              server health.
+
+        # No MCP traffic for 15 minutes (if previously active)
+        - alert: McpNoTraffic
+          expr: |
+            sum(rate(praxis_mcp_requests_total[5m])) == 0
+            and
+            sum(increase(praxis_mcp_requests_total[1h])) > 0
+          for: 15m
+          labels:
+            severity: info
+            component: mcp-filter
+          annotations:
+            summary: "No MCP traffic for 15 minutes"
+            description: >
+              Praxis has received MCP traffic in the past hour but
+              none in the last 15 minutes. This may indicate a client
+              or network issue.
+
+---
+# ── Enable user workload monitoring (cluster-level) ─────────
+# Apply this ONCE per cluster if not already enabled:
+#
+#   oc apply -f - <<EOF
+#   apiVersion: v1
+#   kind: ConfigMap
+#   metadata:
+#     name: cluster-monitoring-config
+#     namespace: openshift-monitoring
+#   data:
+#     config.yaml: |
+#       enableUserWorkload: true
+#   EOF
+#
+# Then wait for prometheus-user-workload pods to start:
+#   oc get pods -n openshift-user-workload-monitoring
+#
+# After that, praxis_mcp_* metrics appear in:
+#   Observe → Metrics (OCP Console)
+#
+# Useful PromQL queries:
+#
+#   # Total MCP requests per second
+#   sum(rate(praxis_mcp_requests_total[5m]))
+#
+#   # Requests broken down by method
+#   sum by (method) (rate(praxis_mcp_requests_total[5m]))
+#
+#   # Tool calls per second by tool name
+#   sum by (tool) (rate(praxis_mcp_tool_calls_total[5m]))
+#
+#   # Tool call error rate
+#   sum(rate(praxis_mcp_tool_calls_total{status="error"}[5m]))
+#   / sum(rate(praxis_mcp_tool_calls_total[5m]))
+#
+#   # Average tool call latency (from summary)
+#   praxis_mcp_tool_call_duration_seconds{quantile="0.5"}
+#
+#   # p99 tool call latency
+#   praxis_mcp_tool_call_duration_seconds{quantile="0.99"}
+#
+#   # Rejection rate by reason
+#   sum by (reason) (rate(praxis_mcp_filter_rejections_total[5m]))

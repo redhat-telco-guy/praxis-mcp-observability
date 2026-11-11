@@ -1,0 +1,525 @@
+# ============================================================
+#  Three mock MCP servers — Weather, Calculator, Translator
+#  Each is a ConfigMap (Python script) + Deployment + Service
+# ============================================================
+
+# ── Weather MCP ──────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: weather-mcp-script
+  labels:
+    app: weather-mcp
+data:
+  server.py: |
+    #!/usr/bin/env python3
+    """Mock Weather MCP server — get_weather / forecast tools."""
+    import json, random, time
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    TOOLS = [
+        {
+            "name": "get_weather",
+            "description": "Get current weather for a city",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            },
+        },
+        {
+            "name": "forecast",
+            "description": "Get multi-day weather forecast",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string"},
+                    "days": {"type": "integer"},
+                },
+                "required": ["city"],
+            },
+        },
+    ]
+
+    CONDITIONS = ["sunny", "partly cloudy", "cloudy", "rainy", "stormy", "windy", "foggy"]
+
+    def handle_rpc(body):
+        rid = body.get("id")
+        method = body.get("method", "")
+        params = body.get("params", {})
+
+        if method == "initialize":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": "2025-11-25", "serverInfo": {"name": "weather-mcp", "version": "1.0.0"}, "capabilities": {"tools": {}}}}
+
+        if method == "server/discover":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": "2025-11-25", "serverInfo": {"name": "weather-mcp", "version": "1.0.0"}, "capabilities": {"tools": {}}}}
+
+        if method == "tools/list":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"tools": TOOLS}}
+
+        if method == "tools/call":
+            tool = params.get("name", "")
+            args = params.get("arguments", {})
+            # Simulate 50-150ms latency
+            time.sleep(random.uniform(0.05, 0.15))
+
+            if tool == "get_weather":
+                city = args.get("city", "Unknown")
+                result = {
+                    "content": [{"type": "text", "text": json.dumps({
+                        "city": city,
+                        "temperature": random.randint(55, 95),
+                        "conditions": random.choice(CONDITIONS),
+                        "humidity": random.randint(20, 80),
+                        "wind_mph": random.randint(2, 25),
+                    })}]
+                }
+                return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+            if tool == "forecast":
+                city = args.get("city", "Unknown")
+                days = min(args.get("days", 5), 7)
+                forecast = []
+                for d in range(days):
+                    forecast.append({
+                        "day": d + 1,
+                        "high": random.randint(65, 95),
+                        "low": random.randint(40, 65),
+                        "conditions": random.choice(CONDITIONS),
+                    })
+                result = {"content": [{"type": "text", "text": json.dumps({"city": city, "forecast": forecast})}]}
+                return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+            return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Unknown tool: {tool}"}}
+
+        return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Unknown method: {method}"}}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length)) if length else {}
+            resp = handle_rpc(body)
+            out = json.dumps(resp).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"weather-mcp OK\n")
+
+        def log_message(self, fmt, *args):
+            pass  # quiet
+
+    print("weather-mcp listening on :3001")
+    HTTPServer(("0.0.0.0", 3001), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-mcp
+  labels:
+    app: weather-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: weather-mcp
+  template:
+    metadata:
+      labels:
+        app: weather-mcp
+    spec:
+      containers:
+        - name: server
+          image: python:3.11-alpine
+          command: ["python3", "/app/server.py"]
+          ports:
+            - containerPort: 3001
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /app
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: weather-mcp-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: weather-mcp
+  labels:
+    app: weather-mcp
+spec:
+  selector:
+    app: weather-mcp
+  ports:
+    - port: 3001
+      targetPort: 3001
+      name: mcp
+
+# ── Calculator MCP ───────────────────────────────────────────
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: calculator-mcp-script
+  labels:
+    app: calculator-mcp
+data:
+  server.py: |
+    #!/usr/bin/env python3
+    """Mock Calculator MCP server — add / multiply / factorial tools."""
+    import json, math, time, random
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    TOOLS = [
+        {
+            "name": "add",
+            "description": "Add two numbers",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number"},
+                    "b": {"type": "number"},
+                },
+                "required": ["a", "b"],
+            },
+        },
+        {
+            "name": "multiply",
+            "description": "Multiply two numbers",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number"},
+                    "b": {"type": "number"},
+                },
+                "required": ["a", "b"],
+            },
+        },
+        {
+            "name": "factorial",
+            "description": "Compute factorial of n (max 20)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "n": {"type": "integer"},
+                },
+                "required": ["n"],
+            },
+        },
+    ]
+
+    def handle_rpc(body):
+        rid = body.get("id")
+        method = body.get("method", "")
+        params = body.get("params", {})
+
+        if method == "initialize":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": "2025-11-25", "serverInfo": {"name": "calculator-mcp", "version": "1.0.0"}, "capabilities": {"tools": {}}}}
+
+        if method == "server/discover":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": "2025-11-25", "serverInfo": {"name": "calculator-mcp", "version": "1.0.0"}, "capabilities": {"tools": {}}}}
+
+        if method == "tools/list":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"tools": TOOLS}}
+
+        if method == "tools/call":
+            tool = params.get("name", "")
+            args = params.get("arguments", {})
+            # Near-instant: 5-20ms
+            time.sleep(random.uniform(0.005, 0.02))
+
+            if tool == "add":
+                a, b = args.get("a", 0), args.get("b", 0)
+                result = {"content": [{"type": "text", "text": json.dumps({"result": a + b})}]}
+                return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+            if tool == "multiply":
+                a, b = args.get("a", 0), args.get("b", 0)
+                result = {"content": [{"type": "text", "text": json.dumps({"result": a * b})}]}
+                return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+            if tool == "factorial":
+                n = min(max(args.get("n", 0), 0), 20)
+                result = {"content": [{"type": "text", "text": json.dumps({"result": math.factorial(n)})}]}
+                return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+            return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Unknown tool: {tool}"}}
+
+        return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Unknown method: {method}"}}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length)) if length else {}
+            resp = handle_rpc(body)
+            out = json.dumps(resp).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"calculator-mcp OK\n")
+
+        def log_message(self, fmt, *args):
+            pass
+
+    print("calculator-mcp listening on :3001")
+    HTTPServer(("0.0.0.0", 3001), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calculator-mcp
+  labels:
+    app: calculator-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: calculator-mcp
+  template:
+    metadata:
+      labels:
+        app: calculator-mcp
+    spec:
+      containers:
+        - name: server
+          image: python:3.11-alpine
+          command: ["python3", "/app/server.py"]
+          ports:
+            - containerPort: 3001
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /app
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: calculator-mcp-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: calculator-mcp
+  labels:
+    app: calculator-mcp
+spec:
+  selector:
+    app: calculator-mcp
+  ports:
+    - port: 3001
+      targetPort: 3001
+      name: mcp
+
+# ── Translator MCP ───────────────────────────────────────────
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: translator-mcp-script
+  labels:
+    app: translator-mcp
+data:
+  server.py: |
+    #!/usr/bin/env python3
+    """Mock Translator MCP server — translate / detect_language tools."""
+    import json, time, random
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    TOOLS = [
+        {
+            "name": "translate",
+            "description": "Translate text between languages",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "from_lang": {"type": "string"},
+                    "to_lang": {"type": "string"},
+                },
+                "required": ["text", "to_lang"],
+            },
+        },
+        {
+            "name": "detect_language",
+            "description": "Detect the language of input text",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                },
+                "required": ["text"],
+            },
+        },
+    ]
+
+    LANG_NAMES = {"en": "English", "es": "Spanish", "fr": "French", "de": "German", "ja": "Japanese", "zh": "Chinese", "ko": "Korean", "pt": "Portuguese"}
+
+    def handle_rpc(body):
+        rid = body.get("id")
+        method = body.get("method", "")
+        params = body.get("params", {})
+
+        if method == "initialize":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": "2025-11-25", "serverInfo": {"name": "translator-mcp", "version": "1.0.0"}, "capabilities": {"tools": {}}}}
+
+        if method == "server/discover":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": "2025-11-25", "serverInfo": {"name": "translator-mcp", "version": "1.0.0"}, "capabilities": {"tools": {}}}}
+
+        if method == "tools/list":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"tools": TOOLS}}
+
+        if method == "tools/call":
+            tool = params.get("name", "")
+            args = params.get("arguments", {})
+            # Simulate API latency: 200-500ms
+            time.sleep(random.uniform(0.2, 0.5))
+
+            if tool == "translate":
+                text = args.get("text", "")
+                from_lang = args.get("from_lang", "en")
+                to_lang = args.get("to_lang", "es")
+                to_name = LANG_NAMES.get(to_lang, to_lang)
+                translated = f"[{to_name}] {text}"
+                result = {"content": [{"type": "text", "text": json.dumps({
+                    "translated": translated,
+                    "from": from_lang,
+                    "to": to_lang,
+                    "characters": len(text),
+                })}]}
+                return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+            if tool == "detect_language":
+                text = args.get("text", "")
+                result = {"content": [{"type": "text", "text": json.dumps({
+                    "language": "en",
+                    "language_name": "English",
+                    "confidence": round(random.uniform(0.85, 0.99), 3),
+                    "characters_analyzed": len(text),
+                })}]}
+                return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+            return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Unknown tool: {tool}"}}
+
+        return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Unknown method: {method}"}}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length)) if length else {}
+            resp = handle_rpc(body)
+            out = json.dumps(resp).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"translator-mcp OK\n")
+
+        def log_message(self, fmt, *args):
+            pass
+
+    print("translator-mcp listening on :3001")
+    HTTPServer(("0.0.0.0", 3001), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: translator-mcp
+  labels:
+    app: translator-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: translator-mcp
+  template:
+    metadata:
+      labels:
+        app: translator-mcp
+    spec:
+      containers:
+        - name: server
+          image: python:3.11-alpine
+          command: ["python3", "/app/server.py"]
+          ports:
+            - containerPort: 3001
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /app
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: translator-mcp-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: translator-mcp
+  labels:
+    app: translator-mcp
+spec:
+  selector:
+    app: translator-mcp
+  ports:
+    - port: 3001
+      targetPort: 3001
+      name: mcp

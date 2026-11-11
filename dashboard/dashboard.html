@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Praxis MCP Metrics Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f1117;--surface:#181b24;--surface2:#1e222d;--border:#2a2f3c;
+  --text:#e2e4ea;--text-dim:#8b90a0;--accent:#6c8cff;--accent-dim:rgba(108,140,255,.12);
+  --green:#34d399;--green-dim:rgba(52,211,153,.12);
+  --red:#f87171;--red-dim:rgba(248,113,113,.12);
+  --amber:#fbbf24;--amber-dim:rgba(251,191,36,.12);
+  --purple:#a78bfa;--purple-dim:rgba(167,139,250,.12);
+  --cyan:#22d3ee;--cyan-dim:rgba(34,211,238,.12);
+  --orange:#fb923c;--orange-dim:rgba(251,146,60,.12);
+  --mono:'Menlo','Consolas','JetBrains Mono',monospace;
+  --sans:system-ui,-apple-system,sans-serif;
+}
+html,body{height:100%;font-family:var(--sans);background:var(--bg);color:var(--text)}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+.header{padding:20px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.header h1{font-size:18px;font-weight:600;letter-spacing:-.3px}
+.header .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.header .dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+.header .dot.err{background:var(--red)}
+.header .sub{color:var(--text-dim);font-size:13px;margin-left:auto}
+
+.tab-bar{display:flex;border-bottom:1px solid var(--border);padding:0 32px;gap:0}
+.tab-btn{padding:12px 24px;font-family:var(--sans);font-size:14px;font-weight:500;color:var(--text-dim);
+  background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:.15s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{display:none;padding:28px 32px;overflow-y:auto;height:calc(100vh - 110px)}
+.tab-content.active{display:block}
+
+.info-banner{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 22px;margin-bottom:24px;line-height:1.7;font-size:14px;color:var(--text-dim)}
+.info-banner strong{color:var(--text)}
+.info-banner code{font-family:var(--mono);font-size:12px;color:var(--accent);background:var(--bg);padding:2px 6px;border-radius:3px}
+
+.card-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.card.ctrl::before{background:linear-gradient(90deg,#22d3ee,#0891b2)}
+.card.data::before{background:linear-gradient(90deg,#fb923c,#ea580c)}
+.card.both::before{background:linear-gradient(90deg,#22d3ee,#fb923c)}
+.card .lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:6px}
+.card .val{font-family:var(--mono);font-size:28px;font-weight:700}
+.card .sub{font-size:12px;color:var(--text-dim);margin-top:6px;line-height:1.5}
+.tag{display:inline-block;font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:3px;margin-top:6px;margin-right:3px}
+.tag-ctrl{background:var(--cyan-dim);color:var(--cyan)}
+.tag-data{background:var(--orange-dim);color:var(--orange)}
+.tag-b{background:var(--accent-dim);color:var(--accent)}
+
+.section-hdr{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.plane-badge{font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;letter-spacing:.5px;font-family:var(--mono)}
+.plane-badge.ctrl{background:rgba(34,211,238,.12);color:#22d3ee;border:1px solid rgba(34,211,238,.25)}
+.plane-badge.data{background:rgba(251,146,60,.12);color:#fb923c;border:1px solid rgba(251,146,60,.25)}
+
+.chart-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:18px}
+.chart-box h3{font-size:14px;font-weight:600;margin-bottom:14px}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bar-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);width:160px;text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{flex:1;height:22px;background:var(--bg);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .4s ease;min-width:2px}
+.bar-val{font-family:var(--mono);font-size:11px;width:70px;text-align:right;flex-shrink:0}
+
+.raw-box{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:14px;font-family:var(--mono);font-size:11px;line-height:1.8;color:var(--text-dim);max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+
+.btn{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 18px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:.15s}
+.btn:hover{opacity:.85}.btn:active{transform:scale(.98)}
+.btn-sm{padding:6px 14px;font-size:12px}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-outline:hover{border-color:var(--accent);background:var(--surface2)}
+.btn-green{background:var(--green)}
+.btn-amber{background:var(--amber);color:#000}
+.btn-red{background:var(--red)}
+.btn-purple{background:var(--purple)}
+.btn-cyan{background:var(--cyan);color:#000}
+.btn-orange{background:var(--orange);color:#000}
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.ts{font-size:11px;color:var(--text-dim)}
+
+.server-section{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.server-section h3{font-size:15px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.server-section h3 .badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.server-section .desc{font-size:13px;color:var(--text-dim);margin-bottom:14px;line-height:1.5}
+.tool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.tool-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px}
+.tool-card .tool-name{font-family:var(--mono);font-size:13px;font-weight:600;margin-bottom:4px}
+.tool-card .tool-desc{font-size:12px;color:var(--text-dim);margin-bottom:8px}
+.tool-card .inputs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.tool-card input,.tool-card select{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;color:var(--text);font-family:var(--mono);font-size:12px;width:100px}
+.tool-card select{width:auto}
+.tool-card .result{font-family:var(--mono);font-size:11px;margin-top:8px;padding:8px;background:var(--bg);border-radius:4px;max-height:80px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
+.tool-card .result.show{display:block}
+.metric-affected{font-size:10px;color:var(--text-dim);margin-top:6px;font-family:var(--mono)}
+.metric-affected span{color:var(--green)}
+
+.prom-section{margin-bottom:28px}
+.prom-section h3{font-size:16px;font-weight:600;margin-bottom:10px}
+.query-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px}
+.query-card .q{flex:1}
+.query-card .q-label{font-size:13px;font-weight:600;margin-bottom:4px}
+.query-card .q-desc{font-size:12px;color:var(--text-dim);margin-bottom:6px}
+.query-card .q-code{font-family:var(--mono);font-size:12px;color:var(--accent);background:var(--bg);padding:8px 10px;border-radius:4px;word-break:break-all}
+.query-card .copy-btn{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text-dim);font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.query-card .copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+.code-block{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:14px;font-family:var(--mono);font-size:11px;line-height:1.6;overflow-x:auto;color:var(--text-dim);margin-bottom:14px;white-space:pre;max-height:300px;overflow-y:auto}
+
+/* Architecture */
+.arch-container{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px;margin-bottom:24px;position:relative}
+.arch-controls{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+.arch-status{font-size:12px;color:var(--text-dim);margin-left:auto;font-family:var(--mono)}
+.arch-legend-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:18px}
+.arch-legend-box h3{font-size:14px;font-weight:600;margin-bottom:12px}
+.legend-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.legend-item{display:flex;align-items:center;gap:10px;font-size:13px}
+.legend-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+.legend-line-swatch{width:28px;height:3px;border-radius:2px;flex-shrink:0}
+
+.metric-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}
+.metric-table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);border-bottom:2px solid var(--border);background:var(--surface)}
+.metric-table td{padding:10px 14px;border-bottom:1px solid rgba(42,47,60,.4)}
+.metric-table td:first-child{font-family:var(--mono);font-size:12px;color:var(--accent)}
+
+/* Prometheus walkthrough */
+.step-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.step-card .step-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--accent-dim);color:var(--accent);font-size:14px;font-weight:700;margin-right:10px;flex-shrink:0}
+.step-card h3{font-size:15px;font-weight:600;margin-bottom:10px;display:flex;align-items:center}
+.step-card p{font-size:13px;color:var(--text-dim);line-height:1.7;margin-bottom:10px}
+.ui-mockup{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--text-dim);margin-bottom:10px;overflow-x:auto;white-space:pre}
+.ui-mockup .highlight{color:var(--accent);font-weight:600}
+.ui-mockup .hl-green{color:var(--green);font-weight:600}
+.ui-mockup .hl-cyan{color:var(--cyan)}
+.ui-mockup .hl-orange{color:var(--orange)}
+.ui-mockup .hl-red{color:var(--red)}
+.screenshot-box{background:var(--bg);border:2px solid var(--border);border-radius:10px;padding:0;margin-bottom:14px;overflow:hidden}
+.screenshot-header{background:var(--surface2);padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.screenshot-header .dot-row{display:flex;gap:5px}
+.screenshot-header .wdot{width:10px;height:10px;border-radius:50%}
+.screenshot-header .title-bar{font-size:11px;color:var(--text-dim);margin-left:10px}
+.screenshot-body{padding:16px;font-family:var(--mono);font-size:11px;line-height:1.8}
+
+/* Gap Analysis */
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:24px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.compare-col{padding:0}
+.compare-header{padding:16px 20px;font-size:14px;font-weight:700;text-align:center;border-bottom:1px solid var(--border)}
+.compare-header.existing{background:rgba(248,113,113,.06);color:var(--red)}
+.compare-header.new{background:rgba(52,211,153,.06);color:var(--green)}
+.compare-row{display:flex;border-bottom:1px solid rgba(42,47,60,.3)}
+.compare-cell{flex:1;padding:14px 20px;font-size:13px;line-height:1.6}
+.compare-cell:first-child{border-right:1px solid rgba(42,47,60,.3)}
+.compare-cell.empty{color:var(--text-dim);font-style:italic;background:rgba(248,113,113,.03)}
+.compare-cell.filled{background:rgba(52,211,153,.03)}
+.compare-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:6px}
+.gap-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:14px}
+.gap-card h4{font-size:14px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.gap-card p{font-size:13px;color:var(--text-dim);line-height:1.6}
+.gap-icon{font-size:16px}
+.verdict-box{background:var(--surface);border:2px solid var(--green);border-radius:10px;padding:24px;margin-top:24px;text-align:center}
+.verdict-box h3{font-size:18px;font-weight:700;color:var(--green);margin-bottom:8px}
+.verdict-box p{font-size:14px;color:var(--text-dim);line-height:1.6}
+.metric-exist{font-family:var(--mono);font-size:12px;color:var(--text);display:block;margin-bottom:4px}
+.metric-exist .dim{color:var(--text-dim)}
+.check{color:var(--green);font-weight:700;margin-right:4px}
+.cross{color:var(--red);font-weight:700;margin-right:4px}
+.live-compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}
+.live-compare-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}
+.live-compare-box h4{font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.live-compare-box .metric-line{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:3px;display:flex;justify-content:space-between}
+.live-compare-box .metric-line .mval{color:var(--text);font-weight:600}
+.existing-tag{font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(248,113,113,.1);color:var(--red);font-weight:600}
+.new-tag{font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(52,211,153,.1);color:var(--green);font-weight:600}
+
+@media(max-width:900px){
+  .card-grid{grid-template-columns:repeat(2,1fr)}
+  .tool-grid{grid-template-columns:1fr}
+  .tab-btn{padding:10px 14px;font-size:13px}
+  .tab-content{padding:16px}
+  .legend-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="dot ok" id="statusDot"></div>
+  <h1>Praxis MCP Metrics Dashboard</h1>
+  <span class="sub" id="connStatus">Connecting...</span>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('metrics')">Metrics</button>
+  <button class="tab-btn" onclick="switchTab('testlab')">Test Lab</button>
+  <button class="tab-btn" onclick="switchTab('architecture')">Architecture</button>
+  <button class="tab-btn" onclick="switchTab('prometheus')">Prometheus</button>
+  <button class="tab-btn" onclick="switchTab('gapanalysis')">Gap Analysis</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TAB 1: METRICS                                         -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="tab-content active" id="tab-metrics">
+  <div class="info-banner">
+    <strong>What am I looking at?</strong> These are the <strong>4 Prometheus metrics</strong> built into the
+    Praxis MCP filter. They capture every MCP JSON-RPC request flowing through the gateway.
+    Metrics are split into <span class="tag tag-ctrl">CONTROL PLANE</span> (initialize, tools/list, ping)
+    and <span class="tag tag-data">DATA PLANE</span> (tools/call) traffic. Data auto-refreshes every 8s.
+  </div>
+
+  <div class="card-grid">
+    <div class="card both">
+      <div class="lbl">praxis_mcp_requests_total</div>
+      <div class="val" id="m-total-req">--</div>
+      <div class="sub">Counts every MCP JSON-RPC request by method + server + status. Both planes.</div>
+      <span class="tag tag-ctrl">CTRL</span><span class="tag tag-data">DATA</span>
+    </div>
+    <div class="card data">
+      <div class="lbl">praxis_mcp_tool_calls_total</div>
+      <div class="val" id="m-total-tools">--</div>
+      <div class="sub">Completed tools/call invocations by tool name + server. Data plane only.</div>
+      <span class="tag tag-data">DATA</span>
+    </div>
+    <div class="card data">
+      <div class="lbl">praxis_mcp_tool_call_duration_seconds</div>
+      <div class="val" id="m-avg-lat">--</div>
+      <div class="sub">Histogram of tool call round-trip latency (p50/p90/p99). Data plane only.</div>
+      <span class="tag tag-data">DATA</span>
+    </div>
+    <div class="card both">
+      <div class="lbl">praxis_mcp_filter_rejections_total</div>
+      <div class="val" id="m-rejections">--</div>
+      <div class="sub">Requests rejected by MCP filter (bad JSON, missing method). Both planes.</div>
+      <span class="tag tag-ctrl">CTRL</span><span class="tag tag-data">DATA</span>
+    </div>
+  </div>
+
+  <div class="section-hdr"><span class="plane-badge ctrl">CONTROL PLANE</span> vs <span class="plane-badge data">DATA PLANE</span> Breakdown</div>
+  <div class="chart-box"><h3>Requests by Plane</h3><div id="bars-plane"></div></div>
+  <div class="chart-box"><h3>Requests by MCP Method</h3><div id="bars-method"></div></div>
+  <div class="chart-box"><h3>Tool Calls by Tool Name</h3><div id="bars-tools"></div></div>
+  <div class="chart-box"><h3>Latency Quantiles (p50 / p90 / p99)</h3><div id="bars-latency"></div></div>
+
+  <div class="toolbar">
+    <button class="btn btn-sm" onclick="refreshMetrics()">Refresh Now</button>
+    <span class="ts" id="lastRefresh">--</span>
+  </div>
+  <details style="margin-top:12px">
+    <summary style="cursor:pointer;color:var(--text-dim);font-size:13px">Raw Prometheus output</summary>
+    <div class="raw-box" id="rawMetrics" style="margin-top:8px">No data yet</div>
+  </details>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TAB 2: TEST LAB                                        -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-testlab">
+  <div class="info-banner">
+    <strong>How does this work?</strong> Each button sends a real MCP JSON-RPC request through
+    <strong>httpd &rarr; Praxis gateway &rarr; MCP server</strong>. Every request increments the
+    Prometheus metrics. Try sending a few, then switch to <strong>Metrics</strong> to see counters update live.
+    <br><br>
+    <span class="tag tag-ctrl">CONTROL PLANE</span> = <code>tools/list</code> (discovery, no tool execution)
+    &nbsp;&nbsp;
+    <span class="tag tag-data">DATA PLANE</span> = <code>tools/call</code> (executes a tool, returns results)
+  </div>
+
+  <div class="server-section">
+    <h3>Weather MCP <span class="badge" style="background:var(--green-dim);color:var(--green)">50-150ms latency</span></h3>
+    <div class="desc">Simulates a weather API. Each tools/call triggers <code>requests_total</code> + <code>tool_calls_total</code> + <code>duration_seconds</code>.</div>
+    <div class="tool-grid">
+      <div class="tool-card">
+        <div class="tool-name">get_weather</div>
+        <div class="tool-desc">Get current weather for a city</div>
+        <div class="inputs">
+          <input type="text" id="w-city" value="Austin" placeholder="city">
+          <button class="btn btn-sm btn-green" onclick="sendTool('weather','get_weather',{city:document.getElementById('w-city').value},this)">Send</button>
+        </div>
+        <div class="metric-affected">Increments: <span>requests_total</span> + <span>tool_calls_total</span> + <span>duration_seconds</span></div>
+        <div class="result" id="r-weather-get_weather"></div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">forecast</div>
+        <div class="tool-desc">Multi-day weather forecast</div>
+        <div class="inputs">
+          <input type="text" id="w-fcity" value="Denver" placeholder="city">
+          <input type="number" id="w-days" value="3" style="width:60px">
+          <button class="btn btn-sm btn-green" onclick="sendTool('weather','forecast',{city:document.getElementById('w-fcity').value,days:+document.getElementById('w-days').value},this)">Send</button>
+        </div>
+        <div class="metric-affected">Increments: <span>requests_total</span> + <span>tool_calls_total</span> + <span>duration_seconds</span></div>
+        <div class="result" id="r-weather-forecast"></div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">tools/list <span class="tag tag-ctrl" style="margin:0">CTRL</span></div>
+        <div class="tool-desc">Control plane: discover available tools (no execution)</div>
+        <div class="inputs"><button class="btn btn-sm btn-outline" onclick="sendToolsList('weather',this)">List Tools</button></div>
+        <div class="metric-affected">Increments: <span>requests_total</span> only (control plane)</div>
+        <div class="result" id="r-weather-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="server-section">
+    <h3>Calculator MCP <span class="badge" style="background:var(--amber-dim);color:var(--amber)">5-20ms latency</span></h3>
+    <div class="desc">Fast math operations. Compare its low latency against translator in the duration histogram.</div>
+    <div class="tool-grid">
+      <div class="tool-card">
+        <div class="tool-name">add</div>
+        <div class="tool-desc">Add two numbers</div>
+        <div class="inputs">
+          <input type="number" id="c-a1" value="42" style="width:60px">
+          <span style="color:var(--text-dim)">+</span>
+          <input type="number" id="c-b1" value="58" style="width:60px">
+          <button class="btn btn-sm btn-amber" onclick="sendTool('calculator','add',{a:+document.getElementById('c-a1').value,b:+document.getElementById('c-b1').value},this)">Send</button>
+        </div>
+        <div class="metric-affected">Increments: <span>requests_total</span> + <span>tool_calls_total</span> + <span>duration_seconds</span></div>
+        <div class="result" id="r-calculator-add"></div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">multiply</div>
+        <div class="tool-desc">Multiply two numbers</div>
+        <div class="inputs">
+          <input type="number" id="c-a2" value="7" style="width:60px">
+          <span style="color:var(--text-dim)">&times;</span>
+          <input type="number" id="c-b2" value="6" style="width:60px">
+          <button class="btn btn-sm btn-amber" onclick="sendTool('calculator','multiply',{a:+document.getElementById('c-a2').value,b:+document.getElementById('c-b2').value},this)">Send</button>
+        </div>
+        <div class="metric-affected">Increments: <span>requests_total</span> + <span>tool_calls_total</span> + <span>duration_seconds</span></div>
+        <div class="result" id="r-calculator-multiply"></div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">factorial</div>
+        <div class="tool-desc">Compute n! (max 20)</div>
+        <div class="inputs">
+          <input type="number" id="c-n" value="10" style="width:60px">
+          <button class="btn btn-sm btn-amber" onclick="sendTool('calculator','factorial',{n:+document.getElementById('c-n').value},this)">Send</button>
+        </div>
+        <div class="metric-affected">Increments: <span>requests_total</span> + <span>tool_calls_total</span> + <span>duration_seconds</span></div>
+        <div class="result" id="r-calculator-factorial"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="server-section">
+    <h3>Translator MCP <span class="badge" style="background:var(--purple-dim);color:var(--purple)">200-500ms latency</span></h3>
+    <div class="desc">Simulates translation API latency. Highest latency — compare with calculator in the histogram.</div>
+    <div class="tool-grid">
+      <div class="tool-card">
+        <div class="tool-name">translate</div>
+        <div class="tool-desc">Translate text to another language</div>
+        <div class="inputs">
+          <input type="text" id="t-text" value="Hello world" style="width:140px">
+          <select id="t-lang"><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="ja">Japanese</option></select>
+          <button class="btn btn-sm btn-purple" onclick="sendTool('translator','translate',{text:document.getElementById('t-text').value,to_lang:document.getElementById('t-lang').value},this)">Send</button>
+        </div>
+        <div class="metric-affected">Increments: <span>requests_total</span> + <span>tool_calls_total</span> + <span>duration_seconds</span></div>
+        <div class="result" id="r-translator-translate"></div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">detect_language</div>
+        <div class="tool-desc">Detect what language text is in</div>
+        <div class="inputs">
+          <input type="text" id="t-detect" value="Bonjour le monde" style="width:180px">
+          <button class="btn btn-sm btn-purple" onclick="sendTool('translator','detect_language',{text:document.getElementById('t-detect').value},this)">Send</button>
+        </div>
+        <div class="metric-affected">Increments: <span>requests_total</span> + <span>tool_calls_total</span> + <span>duration_seconds</span></div>
+        <div class="result" id="r-translator-detect_language"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="server-section">
+    <h3>Bulk Tests &amp; Edge Cases</h3>
+    <div class="desc">Generate volume or trigger rejections to see metrics react.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn" onclick="bulkTest(this)">Bulk Test (10 requests across all servers)</button>
+      <button class="btn btn-red" onclick="sendMalformed(this)">Send Invalid tools/call (triggers rejection metric)</button>
+    </div>
+    <div class="result" id="r-bulk" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TAB 3: ARCHITECTURE (animated SVG)                     -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-architecture">
+  <div class="info-banner">
+    <strong>Live architecture diagram.</strong> Click the buttons below to watch requests flow through the system in real time.
+    <span class="tag tag-cyan" style="margin:0">Cyan dots</span> = control plane,
+    <span class="tag tag-data" style="margin:0">Orange dots</span> = data plane,
+    <span style="color:var(--red)">Red dots</span> = rejections.
+    Each animated dot also sends a <strong>real MCP request</strong> so the Metrics tab updates.
+  </div>
+
+  <div class="arch-controls">
+    <button class="btn btn-cyan" onclick="archSendData('weather')">Data &rarr; Weather</button>
+    <button class="btn btn-amber" onclick="archSendData('calculator')">Data &rarr; Calculator</button>
+    <button class="btn btn-purple" onclick="archSendData('translator')">Data &rarr; Translator</button>
+    <button class="btn btn-outline" onclick="archSendCtrl()">Control Plane (tools/list)</button>
+    <button class="btn btn-red" onclick="archSendReject()">Rejection (malformed)</button>
+    <button class="btn" onclick="archBurst()">Burst (15 requests)</button>
+    <span class="arch-status" id="archStatus"></span>
+  </div>
+
+  <div class="arch-container" id="archSvgContainer">
+    <svg id="archSvg" viewBox="0 0 1020 560" xmlns="http://www.w3.org/2000/svg" style="font-family:system-ui,-apple-system,sans-serif">
+      <defs>
+        <marker id="arr-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#6c8cff"/></marker>
+        <marker id="arr-r" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#ee0000"/></marker>
+        <marker id="arr-d" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#555"/></marker>
+        <linearGradient id="praxis-bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#1e2535"/><stop offset="100%" stop-color="#181d2a"/>
+        </linearGradient>
+        <filter id="glow-cyan"><feGaussianBlur stdDeviation="3" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="glow-orange"><feGaussianBlur stdDeviation="3" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="glow-red"><feGaussianBlur stdDeviation="3" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+
+      <!-- Title -->
+      <text x="510" y="28" text-anchor="middle" fill="#555" font-size="11" font-weight="600" letter-spacing="2">MCP REQUEST FLOW ON OPENSHIFT</text>
+
+      <!-- OCP cluster boundary -->
+      <rect x="178" y="42" width="830" height="480" rx="14" fill="none" stroke="#333" stroke-width="1" stroke-dasharray="8,4"/>
+      <text x="978" y="58" text-anchor="end" fill="#444" font-size="10" font-weight="600">OpenShift Cluster</text>
+
+      <!-- AI Agent -->
+      <rect x="20" y="180" width="120" height="70" rx="10" fill="#1a1f2e" stroke="#6c8cff" stroke-width="2"/>
+      <text x="80" y="210" text-anchor="middle" fill="#6c8cff" font-size="14" font-weight="700">AI Agent</text>
+      <text x="80" y="228" text-anchor="middle" fill="#8b90a0" font-size="10">MCP Client</text>
+
+      <!-- Agent → Route -->
+      <line x1="140" y1="215" x2="195" y2="215" stroke="#6c8cff" stroke-width="2" marker-end="url(#arr-b)"/>
+      <text x="168" y="208" text-anchor="middle" fill="#8b90a0" font-size="8">HTTPS</text>
+
+      <!-- OCP Route -->
+      <rect x="200" y="180" width="120" height="70" rx="10" fill="#1a1f2e" stroke="#ee0000" stroke-width="2"/>
+      <text x="260" y="207" text-anchor="middle" fill="#ee0000" font-size="13" font-weight="700">OCP Route</text>
+      <text x="260" y="223" text-anchor="middle" fill="#8b90a0" font-size="10">HAProxy TLS</text>
+      <text x="260" y="238" text-anchor="middle" fill="#8b90a0" font-size="9">Edge Termination</text>
+
+      <!-- Route → Praxis -->
+      <line x1="320" y1="215" x2="375" y2="215" stroke="#ee0000" stroke-width="2" marker-end="url(#arr-r)"/>
+      <text x="348" y="208" text-anchor="middle" fill="#8b90a0" font-size="8">HTTP</text>
+
+      <!-- Praxis outer -->
+      <rect x="380" y="60" width="340" height="340" rx="12" fill="url(#praxis-bg)" stroke="#6c8cff" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="550" y="88" text-anchor="middle" fill="#6c8cff" font-size="15" font-weight="700">Praxis AI Gateway</text>
+      <text x="550" y="104" text-anchor="middle" fill="#8b90a0" font-size="10">Filter Pipeline (HttpFilter trait)</text>
+
+      <!-- MCP Filter box -->
+      <rect x="400" y="130" width="130" height="110" rx="8" fill="#141822" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="465" y="155" text-anchor="middle" fill="#22d3ee" font-size="12" font-weight="700">MCP Filter</text>
+      <text x="465" y="172" text-anchor="middle" fill="#8b90a0" font-size="9">JSON-RPC parse</text>
+      <text x="465" y="185" text-anchor="middle" fill="#8b90a0" font-size="9">Method extract</text>
+      <text x="465" y="198" text-anchor="middle" fill="#8b90a0" font-size="9">Header validation</text>
+      <text x="465" y="211" text-anchor="middle" fill="#8b90a0" font-size="9">Body size check</text>
+
+      <!-- Metric points -->
+      <circle cx="425" cy="250" r="12" fill="#22d3ee" opacity="0.15" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="425" y="254" text-anchor="middle" fill="#22d3ee" font-size="9" font-weight="700">M1</text>
+      <text x="425" y="273" text-anchor="middle" fill="#22d3ee" font-size="8">requests_total</text>
+
+      <circle cx="505" cy="250" r="12" fill="#f87171" opacity="0.15" stroke="#f87171" stroke-width="1.5"/>
+      <text x="505" y="254" text-anchor="middle" fill="#f87171" font-size="9" font-weight="700">M4</text>
+      <text x="505" y="273" text-anchor="middle" fill="#f87171" font-size="8">rejections_total</text>
+
+      <!-- Router box -->
+      <rect x="550" y="130" width="80" height="110" rx="8" fill="#141822" stroke="#4a6cdf" stroke-width="1.5"/>
+      <text x="590" y="158" text-anchor="middle" fill="#4a6cdf" font-size="12" font-weight="700">Router</text>
+      <text x="590" y="175" text-anchor="middle" fill="#8b90a0" font-size="9">Path-based</text>
+      <text x="590" y="188" text-anchor="middle" fill="#8b90a0" font-size="9">routing to</text>
+      <text x="590" y="201" text-anchor="middle" fill="#8b90a0" font-size="9">MCP clusters</text>
+
+      <circle cx="590" cy="280" r="12" fill="#fb923c" opacity="0.15" stroke="#fb923c" stroke-width="1.5"/>
+      <text x="590" y="284" text-anchor="middle" fill="#fb923c" font-size="9" font-weight="700">M2</text>
+      <text x="590" y="303" text-anchor="middle" fill="#fb923c" font-size="8">tool_calls_total</text>
+
+      <!-- LB box -->
+      <rect x="650" y="130" width="50" height="110" rx="8" fill="#141822" stroke="#3a5cbf" stroke-width="1.5"/>
+      <text x="675" y="170" text-anchor="middle" fill="#3a5cbf" font-size="10" font-weight="700">LB</text>
+      <text x="675" y="185" text-anchor="middle" fill="#8b90a0" font-size="8">Cluster</text>
+      <text x="675" y="197" text-anchor="middle" fill="#8b90a0" font-size="8">select</text>
+
+      <circle cx="675" cy="280" r="12" fill="#fb923c" opacity="0.15" stroke="#fb923c" stroke-width="1.5"/>
+      <text x="675" y="284" text-anchor="middle" fill="#fb923c" font-size="9" font-weight="700">M3</text>
+      <text x="675" y="303" text-anchor="middle" fill="#fb923c" font-size="8">duration_secs</text>
+
+      <!-- Internal arrows -->
+      <line x1="530" y1="185" x2="545" y2="185" stroke="#6c8cff" stroke-width="1.5" marker-end="url(#arr-b)"/>
+      <line x1="630" y1="185" x2="645" y2="185" stroke="#6c8cff" stroke-width="1.5" marker-end="url(#arr-b)"/>
+
+      <!-- Control plane return -->
+      <path d="M 465 130 L 465 115 L 360 115 L 360 205" stroke="#22d3ee" stroke-width="2" stroke-dasharray="5,3" fill="none"/>
+      <text x="405" y="110" text-anchor="middle" fill="#22d3ee" font-size="9" font-weight="600">CTRL response</text>
+
+      <!-- Praxis → Servers -->
+      <line x1="700" y1="150" x2="770" y2="90" stroke="#34d399" stroke-width="2"/>
+      <line x1="700" y1="185" x2="770" y2="185" stroke="#fbbf24" stroke-width="2"/>
+      <line x1="700" y1="220" x2="770" y2="280" stroke="#a78bfa" stroke-width="2"/>
+
+      <!-- Weather -->
+      <rect x="775" y="60" width="220" height="62" rx="8" fill="#141822" stroke="#34d399" stroke-width="2"/>
+      <text x="885" y="83" text-anchor="middle" fill="#34d399" font-size="13" font-weight="700">Weather MCP</text>
+      <text x="885" y="100" text-anchor="middle" fill="#8b90a0" font-size="10">get_weather, forecast</text>
+      <text x="885" y="114" text-anchor="middle" fill="#555" font-size="9">:3001 &bull; 50-150ms</text>
+
+      <!-- Calculator -->
+      <rect x="775" y="154" width="220" height="62" rx="8" fill="#141822" stroke="#fbbf24" stroke-width="2"/>
+      <text x="885" y="177" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">Calculator MCP</text>
+      <text x="885" y="194" text-anchor="middle" fill="#8b90a0" font-size="10">add, multiply, factorial</text>
+      <text x="885" y="208" text-anchor="middle" fill="#555" font-size="9">:3001 &bull; 5-20ms</text>
+
+      <!-- Translator -->
+      <rect x="775" y="248" width="220" height="62" rx="8" fill="#141822" stroke="#a78bfa" stroke-width="2"/>
+      <text x="885" y="271" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">Translator MCP</text>
+      <text x="885" y="288" text-anchor="middle" fill="#8b90a0" font-size="10">translate, detect_language</text>
+      <text x="885" y="302" text-anchor="middle" fill="#555" font-size="9">:3001 &bull; 200-500ms</text>
+
+      <!-- Monitoring section -->
+      <text x="550" y="345" text-anchor="middle" fill="#555" font-size="10" font-weight="600" letter-spacing="1">MONITORING PIPELINE</text>
+
+      <!-- Prometheus -->
+      <rect x="380" y="410" width="170" height="62" rx="8" fill="#141822" stroke="#e85d3a" stroke-width="2"/>
+      <text x="465" y="435" text-anchor="middle" fill="#e85d3a" font-size="13" font-weight="700">Prometheus</text>
+      <text x="465" y="452" text-anchor="middle" fill="#8b90a0" font-size="10">ServiceMonitor :9902</text>
+      <text x="465" y="465" text-anchor="middle" fill="#555" font-size="9">15s scrape interval</text>
+
+      <!-- Grafana -->
+      <rect x="580" y="410" width="170" height="62" rx="8" fill="#141822" stroke="#f46800" stroke-width="2"/>
+      <text x="665" y="435" text-anchor="middle" fill="#f46800" font-size="13" font-weight="700">Grafana</text>
+      <text x="665" y="452" text-anchor="middle" fill="#8b90a0" font-size="10">21-panel dashboard</text>
+      <text x="665" y="465" text-anchor="middle" fill="#555" font-size="9">Control &amp; Data plane panels</text>
+
+      <path d="M 550 360 L 550 380 L 465 380 L 465 405" stroke="#e85d3a" stroke-width="1.5" stroke-dasharray="4,3" fill="none" marker-end="url(#arr-d)"/>
+      <text x="500" y="393" fill="#8b90a0" font-size="9">scrape /metrics</text>
+      <line x1="550" y1="441" x2="575" y2="441" stroke="#f46800" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-d)"/>
+
+      <!-- Alerts -->
+      <text x="550" y="500" text-anchor="middle" fill="#555" font-size="9">Alerts: McpHighRejectionRate &bull; McpToolCallErrorRate &bull; McpNoTraffic</text>
+
+      <!-- Animated particles will be appended here by JS -->
+      <g id="particles"></g>
+    </svg>
+  </div>
+
+  <div class="arch-legend-box">
+    <h3>Legend</h3>
+    <div class="legend-grid">
+      <div class="legend-item"><div class="legend-swatch" style="background:#6c8cff"></div>AI Agent / Praxis Gateway</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#ee0000"></div>OCP Route (HAProxy TLS)</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#22d3ee"></div>MCP Filter (JSON-RPC + metrics)</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#34d399"></div>Weather MCP Server</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#fbbf24"></div>Calculator MCP Server</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#a78bfa"></div>Translator MCP Server</div>
+      <div class="legend-item"><div class="legend-line-swatch" style="background:#22d3ee"></div>Control Plane (initialize, tools/list, ping)</div>
+      <div class="legend-item"><div class="legend-line-swatch" style="background:#fb923c"></div>Data Plane (tools/call &rarr; upstream)</div>
+      <div class="legend-item"><div class="legend-line-swatch" style="background:#f87171"></div>Rejected (invalid request)</div>
+    </div>
+  </div>
+
+  <div class="arch-legend-box">
+    <h3>Metric Recording Points (M1-M4)</h3>
+    <table class="metric-table">
+      <thead><tr><th>Metric</th><th>Point</th><th>Plane</th><th>What It Captures</th></tr></thead>
+      <tbody>
+        <tr><td>praxis_mcp_requests_total</td><td>M1 &mdash; MCP Filter (on_request)</td><td><span class="tag tag-ctrl">CTRL</span><span class="tag tag-data">DATA</span></td><td>Every incoming MCP request by method + server + status</td></tr>
+        <tr><td>praxis_mcp_tool_calls_total</td><td>M2 &mdash; Router (on_response)</td><td><span class="tag tag-data">DATA</span></td><td>Completed tools/call by tool name + server</td></tr>
+        <tr><td>praxis_mcp_tool_call_duration_seconds</td><td>M3 &mdash; LB (on_response)</td><td><span class="tag tag-data">DATA</span></td><td>Round-trip latency histogram (p50/p90/p99)</td></tr>
+        <tr><td>praxis_mcp_filter_rejections_total</td><td>M4 &mdash; MCP Filter (on_request)</td><td><span class="tag tag-ctrl">CTRL</span><span class="tag tag-data">DATA</span></td><td>Rejected requests (bad JSON-RPC, missing method, oversized)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TAB 4: PROMETHEUS                                      -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-prometheus">
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- QUICK START — 3 STEPS                   -->
+  <!-- ════════════════════════════════════════ -->
+  <div style="background:linear-gradient(135deg,rgba(108,140,255,.08),rgba(52,211,153,.06));border:2px solid var(--accent);border-radius:14px;padding:28px 28px 20px;margin-bottom:28px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <span style="font-size:22px;font-weight:700;color:var(--accent)">Quick Start</span>
+      <span style="font-size:13px;color:var(--text-dim)">See your MCP metrics in OCP Prometheus in 3 steps</span>
+    </div>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:20px;line-height:1.6">
+      Make sure you have sent some requests first!
+      <span style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="switchTab('testlab')">Go to Test Lab and send a few requests</span>, then come back here.
+    </p>
+
+    <!-- Step 1 -->
+    <div style="display:flex;gap:18px;margin-bottom:18px;align-items:flex-start">
+      <div style="width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0">1</div>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Open OCP Console &rarr; Observe &rarr; Metrics</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="background:var(--surface2);padding:4px 12px;border-radius:4px;font-size:12px;color:var(--text-dim)">OCP Console</span>
+          <span style="color:var(--accent);font-size:14px">&rarr;</span>
+          <span style="background:var(--surface2);padding:4px 12px;border-radius:4px;font-size:12px;color:var(--text-dim)">Observe</span>
+          <span style="color:var(--accent);font-size:14px">&rarr;</span>
+          <span style="background:var(--accent);padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;color:#fff">Metrics</span>
+        </div>
+        <div style="font-size:12px;color:var(--amber);margin-top:6px">Make sure the project dropdown at the top says <strong>praxis-mcp-test</strong></div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div style="display:flex;gap:18px;margin-bottom:18px;align-items:flex-start">
+      <div style="width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0">2</div>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Type <code style="color:var(--accent);font-size:14px;background:var(--bg);padding:2px 8px;border-radius:3px">praxis_mcp</code> in the query box</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:8px">Autocomplete will show all 4 MCP metrics:</div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);font-size:12px;line-height:2">
+          <div><span style="color:#22d3ee">&#9654;</span> praxis_mcp_<span style="color:var(--accent);font-weight:600">requests_total</span> <span style="color:var(--text-dim)">&mdash; all MCP requests</span></div>
+          <div><span style="color:#fb923c">&#9654;</span> praxis_mcp_<span style="color:var(--accent);font-weight:600">tool_calls_total</span> <span style="color:var(--text-dim)">&mdash; tool invocations</span></div>
+          <div><span style="color:#fb923c">&#9654;</span> praxis_mcp_<span style="color:var(--accent);font-weight:600">tool_call_duration_seconds</span> <span style="color:var(--text-dim)">&mdash; latency</span></div>
+          <div><span style="color:#f87171">&#9654;</span> praxis_mcp_<span style="color:var(--accent);font-weight:600">filter_rejections_total</span> <span style="color:var(--text-dim)">&mdash; rejected</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div style="display:flex;gap:18px;margin-bottom:10px;align-items:flex-start">
+      <div style="width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0">3</div>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Copy a query below, paste it, and click <span style="color:var(--accent)">Run Queries</span></div>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px">Pick one &mdash; control plane or data plane:</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <!-- Control plane query -->
+          <div style="background:var(--surface);border:2px solid rgba(34,211,238,.3);border-radius:10px;padding:14px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+              <span class="plane-badge ctrl">CONTROL PLANE</span>
+              <span style="font-size:12px;color:var(--text-dim)">Request rate per minute</span>
+            </div>
+            <div class="q-code" style="font-family:var(--mono);font-size:11px;color:var(--accent);background:var(--bg);padding:10px;border-radius:6px;margin-bottom:10px;word-break:break-all">sum(rate(praxis_mcp_requests_total{method=~"initialize|tools/list|ping|server/discover"}[5m])) * 60</div>
+            <button onclick="copyQ(this)" style="width:100%;padding:10px;background:rgba(34,211,238,.15);border:1px solid rgba(34,211,238,.3);border-radius:6px;color:#22d3ee;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--sans)">COPY QUERY</button>
+          </div>
+          <!-- Data plane query -->
+          <div style="background:var(--surface);border:2px solid rgba(251,146,60,.3);border-radius:10px;padding:14px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+              <span class="plane-badge data">DATA PLANE</span>
+              <span style="font-size:12px;color:var(--text-dim)">Tool calls by server</span>
+            </div>
+            <div class="q-code" style="font-family:var(--mono);font-size:11px;color:var(--accent);background:var(--bg);padding:10px;border-radius:6px;margin-bottom:10px;word-break:break-all">sum by (server) (rate(praxis_mcp_tool_calls_total[5m])) * 60</div>
+            <button onclick="copyQ(this)" style="width:100%;padding:10px;background:rgba(251,146,60,.15);border:1px solid rgba(251,146,60,.3);border-radius:6px;color:#fb923c;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--sans)">COPY QUERY</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-top:14px;font-size:14px;color:var(--green);font-weight:600">
+      That&rsquo;s it! You should see a graph with your MCP metric data.
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- DETAILED WALKTHROUGH (collapsible)       -->
+  <!-- ════════════════════════════════════════ -->
+  <details style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:20px">
+    <summary style="padding:16px 20px;cursor:pointer;font-size:15px;font-weight:700;color:var(--text);list-style:none;display:flex;align-items:center;gap:10px">
+      <span style="color:var(--accent);font-size:18px;transition:transform .2s" id="detail-arrow">&#9654;</span>
+      Detailed Walkthrough &amp; Troubleshooting
+      <span style="font-size:12px;color:var(--text-dim);font-weight:400;margin-left:auto">Click to expand</span>
+    </summary>
+    <div style="padding:0 20px 20px;border-top:1px solid var(--border)">
+
+      <!-- Troubleshooting -->
+      <div class="step-card" style="margin-top:16px;border-color:var(--amber)">
+        <h3 style="color:var(--amber)">Troubleshooting: Target not showing UP?</h3>
+        <p>Go to <strong>Observe &rarr; Targets</strong> and search for <code>praxis</code>.
+           You need to see a green <span style="color:var(--green);font-weight:600">UP</span> badge. If it&rsquo;s missing or shows
+           <span style="color:var(--red);font-weight:600">DOWN</span>, user workload monitoring may not be enabled:</p>
+        <div class="screenshot-box">
+          <div class="screenshot-header">
+            <div class="dot-row"><div class="wdot" style="background:#f87171"></div><div class="wdot" style="background:#fbbf24"></div><div class="wdot" style="background:#34d399"></div></div>
+            <span class="title-bar">Observe &rarr; Targets &rarr; Filter: "praxis"</span>
+          </div>
+          <div class="screenshot-body">
+<span style="color:#8b90a0">Filter: </span><span style="color:#6c8cff;background:rgba(108,140,255,.1);padding:2px 6px;border-radius:3px">praxis</span>
+
+<span style="color:#34d399">&#9679;</span> <span style="color:#e2e4ea;font-weight:600">praxis-mcp-test/praxis-ai-metrics/0</span>
+  <span style="color:#8b90a0">Endpoint:</span>  <span style="color:#e2e4ea">http://10.128.2.45:9902/metrics</span>
+  <span style="color:#8b90a0">State:</span>     <span style="color:#34d399;font-weight:600">UP</span>                <span style="color:#34d399">&larr; This must be green/UP</span>
+  <span style="color:#8b90a0">Labels:</span>    <span style="color:#fbbf24">app="praxis-ai"</span>  <span style="color:#22d3ee">namespace="praxis-mcp-test"</span>
+  <span style="color:#8b90a0">Scrape:</span>    <span style="color:#e2e4ea">every 15s</span>   <span style="color:#8b90a0">Last:</span> <span style="color:#e2e4ea">3s ago (12ms)</span>
+          </div>
+        </div>
+        <div class="code-block"># Check if user workload monitoring pods exist:
+oc -n openshift-user-workload-monitoring get pods
+
+# If empty, enable it:
+oc apply -f - &lt;&lt;EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+data:
+  config.yaml: |
+    enableUserWorkload: true
+EOF
+
+# Wait ~60s for pods to start, then check Targets again</div>
+      </div>
+
+      <!-- All PromQL queries -->
+      <div class="step-card" style="margin-top:16px">
+        <h3>All PromQL Queries</h3>
+        <p style="margin-bottom:14px">Copy any of these into <strong>Observe &rarr; Metrics</strong> and click <strong>Run Queries</strong>.</p>
+
+        <div style="font-size:12px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Control Plane Queries</div>
+
+        <div class="query-card">
+          <div class="q">
+            <div class="q-label">Control plane request rate (per minute)</div>
+            <div class="q-desc">How many control plane requests are hitting Praxis per minute</div>
+            <div class="q-code">sum(rate(praxis_mcp_requests_total{method=~"initialize|tools/list|ping|server/discover"}[5m])) * 60</div>
+          </div>
+          <button class="copy-btn" onclick="copyQ(this)" style="padding:8px 16px;font-weight:600">COPY</button>
+        </div>
+
+        <div class="query-card">
+          <div class="q">
+            <div class="q-label">Control plane breakdown by method</div>
+            <div class="q-desc">See which control plane methods are most frequent</div>
+            <div class="q-code">sum by (method) (rate(praxis_mcp_requests_total{method=~"initialize|tools/list|ping|server/discover"}[5m])) * 60</div>
+          </div>
+          <button class="copy-btn" onclick="copyQ(this)" style="padding:8px 16px;font-weight:600">COPY</button>
+        </div>
+
+        <div style="font-size:12px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px">Data Plane Queries</div>
+
+        <div class="query-card">
+          <div class="q">
+            <div class="q-label">Tool call rate by MCP server (per minute)</div>
+            <div class="q-desc">Which MCP servers are getting the most tool calls</div>
+            <div class="q-code">sum by (server) (rate(praxis_mcp_tool_calls_total[5m])) * 60</div>
+          </div>
+          <button class="copy-btn" onclick="copyQ(this)" style="padding:8px 16px;font-weight:600">COPY</button>
+        </div>
+
+        <div class="query-card">
+          <div class="q">
+            <div class="q-label">Tool call rate by tool name</div>
+            <div class="q-desc">Which specific tools are being invoked most</div>
+            <div class="q-code">sum by (tool) (rate(praxis_mcp_tool_calls_total[5m])) * 60</div>
+          </div>
+          <button class="copy-btn" onclick="copyQ(this)" style="padding:8px 16px;font-weight:600">COPY</button>
+        </div>
+
+        <div class="query-card">
+          <div class="q">
+            <div class="q-label">p99 latency by server</div>
+            <div class="q-desc">Worst-case latency &mdash; translator ~500ms, calculator ~20ms</div>
+            <div class="q-code">histogram_quantile(0.99, sum by (le, server) (rate(praxis_mcp_tool_call_duration_seconds_bucket[5m])))</div>
+          </div>
+          <button class="copy-btn" onclick="copyQ(this)" style="padding:8px 16px;font-weight:600">COPY</button>
+        </div>
+
+        <div class="query-card">
+          <div class="q">
+            <div class="q-label">p50 (median) latency by server</div>
+            <div class="q-desc">Typical latency per server</div>
+            <div class="q-code">histogram_quantile(0.50, sum by (le, server) (rate(praxis_mcp_tool_call_duration_seconds_bucket[5m])))</div>
+          </div>
+          <button class="copy-btn" onclick="copyQ(this)" style="padding:8px 16px;font-weight:600">COPY</button>
+        </div>
+
+        <div style="font-size:12px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px">Rejection Queries</div>
+
+        <div class="query-card">
+          <div class="q">
+            <div class="q-label">Rejection rate</div>
+            <div class="q-desc">Requests blocked by the MCP filter</div>
+            <div class="q-code">sum(rate(praxis_mcp_filter_rejections_total[5m])) * 60</div>
+          </div>
+          <button class="copy-btn" onclick="copyQ(this)" style="padding:8px 16px;font-weight:600">COPY</button>
+        </div>
+
+        <div class="query-card">
+          <div class="q">
+            <div class="q-label">Rejection percentage (alert threshold: 10%)</div>
+            <div class="q-desc">PrometheusRule fires McpHighRejectionRate when this exceeds 10%</div>
+            <div class="q-code">sum(rate(praxis_mcp_filter_rejections_total[5m])) / sum(rate(praxis_mcp_requests_total[5m])) * 100</div>
+          </div>
+          <button class="copy-btn" onclick="copyQ(this)" style="padding:8px 16px;font-weight:600">COPY</button>
+        </div>
+      </div>
+
+      <!-- What results look like -->
+      <div class="step-card" style="margin-top:16px">
+        <h3>What the results look like</h3>
+        <p>After you run a query, switch between <strong>Graph</strong> and <strong>Table</strong> view using the toggle above the results.</p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px">
+          <div class="screenshot-box" style="margin-bottom:0">
+            <div class="screenshot-header">
+              <div class="dot-row"><div class="wdot" style="background:#f87171"></div><div class="wdot" style="background:#fbbf24"></div><div class="wdot" style="background:#34d399"></div></div>
+              <span class="title-bar"><span style="color:#22d3ee">Control Plane</span> &mdash; Table view</span>
+            </div>
+            <div class="screenshot-body" style="font-size:10px;line-height:1.7">
+<span style="color:#8b90a0">  method          server        value</span>
+  <span style="color:#22d3ee">initialize</span>      weather-mcp   <span style="color:#e2e4ea;font-weight:600">5</span>
+  <span style="color:#22d3ee">tools/list</span>      weather-mcp   <span style="color:#e2e4ea;font-weight:600">12</span>
+  <span style="color:#22d3ee">tools/list</span>      calculator    <span style="color:#e2e4ea;font-weight:600">8</span>
+  <span style="color:#22d3ee">ping</span>            &lt;none&gt;        <span style="color:#e2e4ea;font-weight:600">3</span>
+            </div>
+          </div>
+          <div class="screenshot-box" style="margin-bottom:0">
+            <div class="screenshot-header">
+              <div class="dot-row"><div class="wdot" style="background:#f87171"></div><div class="wdot" style="background:#fbbf24"></div><div class="wdot" style="background:#34d399"></div></div>
+              <span class="title-bar"><span style="color:#fb923c">Data Plane</span> &mdash; Table view</span>
+            </div>
+            <div class="screenshot-body" style="font-size:10px;line-height:1.7">
+<span style="color:#8b90a0">  tool              server           value</span>
+  <span style="color:#fb923c">get_weather</span>       weather-mcp      <span style="color:#e2e4ea;font-weight:600">24</span>
+  <span style="color:#fb923c">add</span>               calculator-mcp   <span style="color:#e2e4ea;font-weight:600">15</span>
+  <span style="color:#fb923c">multiply</span>          calculator-mcp   <span style="color:#e2e4ea;font-weight:600">11</span>
+  <span style="color:#fb923c">translate</span>         translator-mcp   <span style="color:#e2e4ea;font-weight:600">9</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alerts -->
+      <div class="step-card" style="margin-top:16px">
+        <h3>Deployed PrometheusRule Alerts</h3>
+        <p>Go to <strong>Observe &rarr; Alerting</strong> and search for <code>mcp</code>. Three alerts are deployed:</p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px">
+          <div style="background:var(--bg);border:1px solid rgba(248,113,113,.3);border-radius:8px;padding:14px;text-align:center">
+            <div style="font-size:20px;margin-bottom:4px">&#9888;</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">McpHighRejectionRate</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Fires when rejection rate &gt; 10% for 5 minutes</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid rgba(248,113,113,.3);border-radius:8px;padding:14px;text-align:center">
+            <div style="font-size:20px;margin-bottom:4px">&#9888;</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">McpToolCallErrorRate</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Fires when tool error rate &gt; 5% for 5 minutes</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:14px;text-align:center">
+            <div style="font-size:20px;margin-bottom:4px">&#9888;</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">McpNoTraffic</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Fires when zero MCP requests for 15 minutes</div>
+          </div>
+        </div>
+        <p style="margin-top:10px">&ldquo;Inactive&rdquo; means the conditions aren&rsquo;t met (good!). Send malformed requests from the
+           Test Lab to trigger <strong>McpHighRejectionRate</strong>.</p>
+      </div>
+
+      <!-- Grafana -->
+      <div class="step-card" style="margin-top:16px">
+        <h3>Grafana Dashboard (21 panels)</h3>
+        <p>A pre-built Grafana dashboard is deployed as ConfigMap <code>praxis-mcp-grafana</code>.</p>
+        <div class="code-block"># Export the dashboard JSON for import into Grafana:
+oc get configmap praxis-mcp-grafana \
+    -o jsonpath='{.data.praxis-mcp-metrics\.json}' > grafana-import.json
+
+# Then in Grafana: Dashboards &rarr; Import &rarr; Upload JSON file
+# Select your Prometheus datasource when prompted</div>
+        <p>If Grafana auto-discovers labeled ConfigMaps:</p>
+        <div class="code-block">oc label configmap praxis-mcp-grafana grafana_dashboard=true --overwrite</div>
+      </div>
+
+    </div>
+  </details>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TAB 5: GAP ANALYSIS                                    -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-gapanalysis">
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- NUMBERS AT A GLANCE                     -->
+  <!-- ════════════════════════════════════════ -->
+  <div style="display:flex;gap:14px;margin-bottom:24px;align-items:stretch">
+    <!-- Card: 71 total -->
+    <div style="flex:1;background:var(--surface);border:2px solid rgba(108,140,255,.3);border-radius:12px;padding:20px;text-align:center">
+      <div style="font-family:var(--mono);font-size:42px;font-weight:800;color:var(--accent)">71</div>
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Total Metrics in Codebase</div>
+      <div style="font-size:12px;color:var(--text-dim)">36 base proxy + 35 AI-specific</div>
+    </div>
+    <!-- Arrow -->
+    <div style="display:flex;align-items:center;font-size:28px;color:var(--text-dim);flex-shrink:0;padding:0 4px">&rarr;</div>
+    <!-- Card: ~17 active -->
+    <div style="flex:1;background:var(--surface);border:2px solid rgba(251,191,36,.3);border-radius:12px;padding:20px;text-align:center">
+      <div style="font-family:var(--mono);font-size:42px;font-weight:800;color:var(--amber)">~17</div>
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Active on THIS Cluster</div>
+      <div style="font-size:12px;color:var(--text-dim)">Only configured filters emit metrics</div>
+    </div>
+    <!-- Arrow -->
+    <div style="display:flex;align-items:center;font-size:28px;color:var(--text-dim);flex-shrink:0;padding:0 4px">&rarr;</div>
+    <!-- Card: 0 MCP -->
+    <div style="flex:1;background:var(--surface);border:2px solid rgba(248,113,113,.4);border-radius:12px;padding:20px;text-align:center">
+      <div style="font-family:var(--mono);font-size:42px;font-weight:800;color:var(--red)">0</div>
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">MCP Protocol Metrics</div>
+      <div style="font-size:12px;color:var(--red)">Zero visibility into MCP semantics</div>
+    </div>
+    <!-- Arrow -->
+    <div style="display:flex;align-items:center;font-size:28px;color:var(--green);flex-shrink:0;padding:0 4px">&rarr;</div>
+    <!-- Card: +4 NEW -->
+    <div style="flex:1;background:rgba(52,211,153,.06);border:2px solid rgba(52,211,153,.4);border-radius:12px;padding:20px;text-align:center">
+      <div style="font-family:var(--mono);font-size:42px;font-weight:800;color:var(--green)">+4</div>
+      <div style="font-size:14px;font-weight:700;color:var(--green);margin-bottom:4px">NEW MCP Metrics</div>
+      <div style="font-size:12px;color:var(--text-dim)">This PR fills the gap</div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- WHY ONLY ~17?                           -->
+  <!-- ════════════════════════════════════════ -->
+  <details open style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:24px">
+    <summary style="padding:16px 20px;cursor:pointer;font-size:15px;font-weight:700;color:var(--amber);list-style:none;display:flex;align-items:center;gap:8px">
+      <span style="font-size:16px">&#9888;</span> Why does it say ~17 active when the full codebase has 71?
+    </summary>
+    <div style="padding:0 20px 20px">
+      <!-- Funnel diagram -->
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:14px;text-align:center">
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
+          <div style="background:rgba(108,140,255,.1);border:1px solid rgba(108,140,255,.3);border-radius:8px;padding:12px 20px;text-align:center">
+            <div style="font-family:var(--mono);font-size:24px;font-weight:800;color:var(--accent)">71</div>
+            <div style="font-size:11px;color:var(--text-dim)">defined in code</div>
+          </div>
+          <div style="font-size:20px;color:var(--text-dim)">&rarr;</div>
+          <div style="background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.3);border-radius:8px;padding:12px 16px;text-align:center">
+            <div style="font-size:13px;font-weight:700;color:var(--purple)">Your Config</div>
+            <div style="font-size:10px;color:var(--text-dim);margin-top:2px">3 filters enabled:<br>MCP + Router + LB</div>
+          </div>
+          <div style="font-size:20px;color:var(--text-dim)">&rarr;</div>
+          <div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:12px 20px;text-align:center">
+            <div style="font-family:var(--mono);font-size:24px;font-weight:800;color:var(--amber)">~17</div>
+            <div style="font-size:11px;color:var(--text-dim)">emitted at runtime</div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.7;margin-bottom:12px">
+        Praxis has <strong style="color:var(--text)">71 metrics defined</strong> across its full codebase. But metrics are only emitted by filters
+        you actually enable in your <code>config.yaml</code>. On this cluster, we have 3 filters (MCP, Router, Load Balancer),
+        so only ~17 metrics are active. In a production deployment with more filters (rate limiting, auth, circuit breaker, etc.),
+        you&rsquo;d see more of the 71.
+      </p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <!-- Base proxy breakdown -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">36 Base Proxy Metrics</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.8;font-family:var(--mono)">
+            TCP connections <span style="color:var(--text);float:right">5</span><br>
+            HTTP request/response <span style="color:var(--text);float:right">5</span><br>
+            Upstream / cluster <span style="color:var(--text);float:right">7</span><br>
+            Filter pipeline <span style="color:var(--text);float:right">4</span><br>
+            Overload manager <span style="color:var(--text);float:right">2</span><br>
+            Process (memory/CPU) <span style="color:var(--text);float:right">2</span><br>
+            Config reload <span style="color:var(--text);float:right">2</span><br>
+            Subrequest <span style="color:var(--text);float:right">4</span><br>
+            CloudEvents <span style="color:var(--text);float:right">4</span><br>
+            Circuit breaker <span style="color:var(--text);float:right">1</span>
+          </div>
+        </div>
+        <!-- AI-fork breakdown -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:12px;font-weight:700;color:var(--purple);margin-bottom:8px">35 AI-Fork Metrics</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.8;font-family:var(--mono)">
+            LLM token counts <span style="color:var(--text);float:right">9</span><br>
+            TTFT (time to first token) <span style="color:var(--text);float:right">1</span><br>
+            Intelligent routing <span style="color:var(--text);float:right">6</span><br>
+            Token rate limiting <span style="color:var(--text);float:right">16</span><br>
+            Metering <span style="color:var(--text);float:right">1</span><br>
+            API translation <span style="color:var(--text);float:right">1</span><br>
+            Rate limiting <span style="color:var(--text);float:right">1</span>
+          </div>
+        </div>
+      </div>
+
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.7;margin-top:14px">
+        <strong style="color:var(--text)">The key point:</strong> All 71 metrics cover infrastructure, AI, and routing &mdash;
+        but <span style="color:var(--red);font-weight:600">not a single one understands MCP protocol semantics</span>.
+        They can&rsquo;t tell you which tool was called, which MCP method was used, tool call latency per server,
+        or why an MCP request was rejected.
+      </p>
+    </div>
+  </details>
+
+  <!-- Short summary banner -->
+  <div class="info-banner">
+    <strong>Below:</strong> Live side-by-side comparison pulled from <code>/metrics</code> on port 9902.
+    Left = metrics currently active on this cluster. Right = the 4 new MCP metrics this PR adds.
+  </div>
+
+  <!-- Live side-by-side -->
+  <div class="section-hdr">Live Metrics Comparison (from this cluster)</div>
+  <div class="live-compare-grid">
+    <div class="live-compare-box" style="border-color:rgba(248,113,113,.3)">
+      <h4><span class="existing-tag">EXISTING</span> Praxis Infrastructure Metrics</h4>
+      <div id="existing-metrics-list">
+        <div style="color:var(--text-dim);font-size:12px">Loading from /metrics...</div>
+      </div>
+    </div>
+    <div class="live-compare-box" style="border-color:rgba(52,211,153,.3)">
+      <h4><span class="new-tag">NEW</span> MCP Protocol Metrics (my contribution)</h4>
+      <div id="new-metrics-list">
+        <div style="color:var(--text-dim);font-size:12px">Loading from /metrics...</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-sm" onclick="loadGapData()" style="margin-bottom:24px">Refresh Comparison</button>
+
+  <!-- What questions can you answer? -->
+  <div class="section-hdr">What can operators answer?</div>
+
+  <div class="compare-grid">
+    <div class="compare-col">
+      <div class="compare-header existing">Today (without MCP metrics)</div>
+    </div>
+    <div class="compare-col">
+      <div class="compare-header new">With MCP Metrics (this PR)</div>
+    </div>
+  </div>
+
+  <div class="gap-card">
+    <h4><span class="cross">&#10007;</span> vs <span class="check">&#10003;</span> Which MCP tools are being called and how often?</h4>
+    <div class="compare-row">
+      <div class="compare-cell empty">
+        <div class="compare-label">Existing</div>
+        No visibility. The proxy sees HTTP POST requests but doesn't parse the JSON-RPC body.
+        You see <code>request_count</code> go up but can't distinguish <code>get_weather</code> from <code>translate</code>.
+      </div>
+      <div class="compare-cell filled">
+        <div class="compare-label">With MCP Metrics</div>
+        <code>praxis_mcp_tool_calls_total{tool="get_weather", server="weather-mcp", status="ok"}</code>
+        <br>Every tool call is individually counted by name, server, and status.
+      </div>
+    </div>
+  </div>
+
+  <div class="gap-card">
+    <h4><span class="cross">&#10007;</span> vs <span class="check">&#10003;</span> What is the latency per tool / per MCP server?</h4>
+    <div class="compare-row">
+      <div class="compare-cell empty">
+        <div class="compare-label">Existing</div>
+        <code>filter_duration_seconds</code> measures total filter pipeline time, not individual tool call round-trips.
+        You can't tell if the weather API is fast and the translator is slow.
+      </div>
+      <div class="compare-cell filled">
+        <div class="compare-label">With MCP Metrics</div>
+        <code>praxis_mcp_tool_call_duration_seconds{server="translator-mcp", quantile="0.99"} = 0.48</code>
+        <br>Histogram with p50/p90/p99 per server. Translator p99=480ms, Calculator p99=18ms — immediately visible.
+      </div>
+    </div>
+  </div>
+
+  <div class="gap-card">
+    <h4><span class="cross">&#10007;</span> vs <span class="check">&#10003;</span> Is this control plane or data plane traffic?</h4>
+    <div class="compare-row">
+      <div class="compare-cell empty">
+        <div class="compare-label">Existing</div>
+        All MCP requests look identical — HTTP POSTs to the same path. No way to separate
+        <code>initialize</code>/<code>tools/list</code> (control) from <code>tools/call</code> (data).
+      </div>
+      <div class="compare-cell filled">
+        <div class="compare-label">With MCP Metrics</div>
+        <code>praxis_mcp_requests_total{method="tools/list"}</code> — tagged by MCP method.
+        <br>Control plane: initialize, tools/list, ping. Data plane: tools/call.
+        <br>Operators can set different SLOs for each plane.
+      </div>
+    </div>
+  </div>
+
+  <div class="gap-card">
+    <h4><span class="cross">&#10007;</span> vs <span class="check">&#10003;</span> Are requests being rejected and why?</h4>
+    <div class="compare-row">
+      <div class="compare-cell empty">
+        <div class="compare-label">Existing</div>
+        Generic HTTP 4xx/5xx counters. Can't distinguish "invalid JSON-RPC" from "auth failure" from
+        "body too large" from "missing method field".
+      </div>
+      <div class="compare-cell filled">
+        <div class="compare-label">With MCP Metrics</div>
+        <code>praxis_mcp_filter_rejections_total{reason="invalid_jsonrpc"}</code>
+        <br>MCP-specific rejection reasons. PrometheusRule fires alert when rejection rate exceeds 10%.
+      </div>
+    </div>
+  </div>
+
+  <div class="gap-card">
+    <h4><span class="cross">&#10007;</span> vs <span class="check">&#10003;</span> Which MCP server is handling the most traffic?</h4>
+    <div class="compare-row">
+      <div class="compare-cell empty">
+        <div class="compare-label">Existing</div>
+        Cluster-level connection metrics exist but don't tell you MCP server identity or which tools
+        are driving load. If weather-mcp is overloaded, you'd see "cluster X has high latency" with no context.
+      </div>
+      <div class="compare-cell filled">
+        <div class="compare-label">With MCP Metrics</div>
+        <code>sum by (server) (rate(praxis_mcp_tool_calls_total[5m]))</code>
+        <br>Instantly shows: weather-mcp: 45 req/min, calculator-mcp: 120 req/min, translator-mcp: 12 req/min.
+      </div>
+    </div>
+  </div>
+
+  <div class="gap-card">
+    <h4><span class="cross">&#10007;</span> vs <span class="check">&#10003;</span> Can I set up meaningful alerts for MCP traffic?</h4>
+    <div class="compare-row">
+      <div class="compare-cell empty">
+        <div class="compare-label">Existing</div>
+        You can alert on generic "high error rate" or "high latency" but it covers ALL traffic through the proxy,
+        not just MCP. No way to create "MCP tool call error rate > 5%" or "No MCP traffic for 15 minutes" alerts.
+      </div>
+      <div class="compare-cell filled">
+        <div class="compare-label">With MCP Metrics</div>
+        Three production-ready PrometheusRules deployed:
+        <br>&bull; <strong>McpHighRejectionRate</strong> — rejection rate > 10% for 5m
+        <br>&bull; <strong>McpToolCallErrorRate</strong> — tool call errors > 5% for 5m
+        <br>&bull; <strong>McpNoTraffic</strong> — zero MCP requests for 15m
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary table -->
+  <div class="section-hdr" style="margin-top:32px">Side-by-Side Metric Inventory</div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:24px">
+    <table class="metric-table" style="margin-bottom:0">
+      <thead>
+        <tr>
+          <th style="width:30%">Observability Question</th>
+          <th style="width:35%">Existing Praxis Metric</th>
+          <th style="width:35%">New MCP Metric</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--text)">Total MCP request count</td>
+          <td style="color:var(--red)"><span class="cross">&#10007;</span> None (generic HTTP only)</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> praxis_mcp_requests_total</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text)">Request count by MCP method</td>
+          <td style="color:var(--red)"><span class="cross">&#10007;</span> None</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> requests_total{method="..."}</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text)">Tool call count by name</td>
+          <td style="color:var(--red)"><span class="cross">&#10007;</span> None</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> praxis_mcp_tool_calls_total</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text)">Tool call latency (histogram)</td>
+          <td style="color:var(--amber)"><span style="color:var(--amber);font-weight:700;margin-right:4px">~</span> filter_duration_seconds (whole pipeline, not per-tool)</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> praxis_mcp_tool_call_duration_seconds</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text)">Latency per MCP server</td>
+          <td style="color:var(--red)"><span class="cross">&#10007;</span> None</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> duration_seconds{server="..."}</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text)">MCP-specific rejections</td>
+          <td style="color:var(--red)"><span class="cross">&#10007;</span> None (generic 4xx only)</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> praxis_mcp_filter_rejections_total</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text)">Control vs data plane split</td>
+          <td style="color:var(--red)"><span class="cross">&#10007;</span> None</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> requests_total{method} label</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text)">Traffic per MCP server</td>
+          <td style="color:var(--red)"><span class="cross">&#10007;</span> None</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> {server="..."} label on all 4</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text)">Production alerts (MCP-specific)</td>
+          <td style="color:var(--red)"><span class="cross">&#10007;</span> None</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> 3 PrometheusRules</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text)">Grafana dashboard (MCP)</td>
+          <td style="color:var(--red)"><span class="cross">&#10007;</span> None</td>
+          <td style="color:var(--green)"><span class="check">&#10003;</span> 21-panel dashboard</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="verdict-box">
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+      <span style="font-family:var(--mono);font-size:28px;font-weight:800;color:var(--accent)">71 metrics</span>
+      <span style="font-size:20px;color:var(--text-dim)">+</span>
+      <span style="font-family:var(--mono);font-size:28px;font-weight:800;color:var(--green)">4 NEW</span>
+      <span style="font-size:20px;color:var(--text-dim)">=</span>
+      <span style="font-family:var(--mono);font-size:28px;font-weight:800;color:var(--green)">75 total</span>
+    </div>
+    <h3>Full MCP Observability</h3>
+    <p>Praxis ships 71 metrics covering infrastructure, AI, and routing &mdash; a strong foundation.
+       But not one of them understands MCP protocol semantics.
+       These 4 new metrics + 3 PrometheusRule alerts + 21-panel Grafana dashboard close the
+       <strong>only remaining observability gap</strong> &mdash; giving operators the same protocol-level visibility
+       into MCP traffic that Envoy gives for HTTP/gRPC.</p>
+  </div>
+</div>
+
+<script>
+// ── Gap Analysis: live comparison ──
+async function loadGapData() {
+  try {
+    const resp = await fetch('/api/metrics');
+    if (!resp.ok) return;
+    const raw = await resp.text();
+    const lines = raw.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+
+    const existing = [];
+    const newMcp = [];
+
+    for (const line of lines) {
+      const spaceIdx = line.lastIndexOf(' ');
+      if (spaceIdx < 0) continue;
+      const name = line.substring(0, spaceIdx).split('{')[0];
+      if (name.startsWith('praxis_mcp_')) { newMcp.push(line); } else { existing.push(line); }
+    }
+
+    // ── Existing metrics ──
+    const existingNames = new Map();
+    for (const l of existing) {
+      const name = l.split('{')[0].split(' ')[0];
+      if (!existingNames.has(name)) existingNames.set(name, []);
+      existingNames.get(name).push(l);
+    }
+
+    // Categorize existing metrics
+    const categories = { 'Connection / Listener': [], 'Filter Pipeline': [], 'Cluster / Upstream': [], 'Admin / Internal': [], 'Other': [] };
+    for (const name of [...existingNames.keys()].sort()) {
+      if (name.includes('connection') || name.includes('listener') || name.includes('tcp') || name.includes('downstream')) categories['Connection / Listener'].push(name);
+      else if (name.includes('filter') || name.includes('duration')) categories['Filter Pipeline'].push(name);
+      else if (name.includes('cluster') || name.includes('upstream') || name.includes('endpoint')) categories['Cluster / Upstream'].push(name);
+      else if (name.includes('admin') || name.includes('server') || name.includes('version')) categories['Admin / Internal'].push(name);
+      else categories['Other'].push(name);
+    }
+
+    const existingEl = document.getElementById('existing-metrics-list');
+    let existingHtml = '';
+    let totalExisting = 0;
+    for (const [cat, names] of Object.entries(categories)) {
+      if (!names.length) continue;
+      existingHtml += `<div style="font-size:10px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-top:8px;margin-bottom:4px">${cat}</div>`;
+      for (const name of names) {
+        const seriesCount = existingNames.get(name).length;
+        totalExisting++;
+        // Show a sample value
+        const sampleLine = existingNames.get(name)[0];
+        const sampleVal = sampleLine.split(/\s+/).pop();
+        existingHtml += `<div class="metric-line"><span>${name}</span><span class="mval">${seriesCount} series</span></div>`;
+      }
+    }
+    existingHtml += `<div style="margin-top:12px;font-size:12px;color:var(--text-dim);border-top:1px solid var(--border);padding-top:10px">
+      <strong style="color:var(--text)">${totalExisting} metric names active</strong> on this cluster (from <code style="font-size:10px;color:var(--accent)">/metrics</code> port 9902).
+      <br><br><strong>Full codebase total: 71 metrics</strong> (36 base proxy + 35 AI-fork). Only filters enabled in your config emit metrics &mdash; that&rsquo;s why you see fewer here. Categories in the full set include:
+      <span style="font-size:11px;display:block;margin:6px 0;color:var(--text-dim)">TCP (5) &bull; HTTP (5) &bull; Upstream (7) &bull; Filter/Pipeline (4) &bull; Overload (2) &bull; Process (2) &bull; Config (2) &bull; Subrequest (4) &bull; CloudEvents (4) &bull; Circuit Breaker (1) &bull; AI/LLM Tokens (9) &bull; TTFT (1) &bull; Intelligent Routing (6) &bull; Token Rate Limiting (16) &bull; Metering (1) &bull; API Translation (1) &bull; Rate Limiting (1)</span>
+      These cover infrastructure, AI, and routing &mdash; but <span style="color:var(--red);font-weight:600">none of them understand MCP protocol semantics</span>. They cannot tell you which tools are being called, which MCP method was used, tool call latency per server, or why an MCP request was rejected.
+    </div>`;
+    existingEl.innerHTML = existingHtml;
+
+    // ── New MCP metrics ──
+    const newNames = new Map();
+    for (const l of newMcp) {
+      const name = l.split('{')[0].split(' ')[0];
+      if (!newNames.has(name)) newNames.set(name, []);
+      newNames.get(name).push(l);
+    }
+
+    // Group histogram sub-metrics under parent
+    const coreMetrics = [
+      { name: 'praxis_mcp_requests_total', type: 'counter', plane: 'both',
+        desc: 'Counts every MCP JSON-RPC request. Labels: method, server, status.',
+        subMetrics: [] },
+      { name: 'praxis_mcp_tool_calls_total', type: 'counter', plane: 'data',
+        desc: 'Counts completed tools/call invocations. Labels: tool, server, status.',
+        subMetrics: [] },
+      { name: 'praxis_mcp_tool_call_duration_seconds', type: 'histogram', plane: 'data',
+        desc: 'Round-trip latency of tool calls with p50/p90/p99 quantiles. Labels: server.',
+        subMetrics: ['_sum', '_count', '_bucket'] },
+      { name: 'praxis_mcp_filter_rejections_total', type: 'counter', plane: 'both',
+        desc: 'Counts requests rejected by the MCP filter. Labels: reason.',
+        subMetrics: [] }
+    ];
+
+    const newEl = document.getElementById('new-metrics-list');
+    let newHtml = '';
+
+    for (const m of coreMetrics) {
+      const mainSeries = newNames.get(m.name) || [];
+      let totalSeries = mainSeries.length;
+      const planeColor = m.plane === 'data' ? '#fb923c' : m.plane === 'both' ? '#6c8cff' : '#22d3ee';
+      const planeLabel = m.plane === 'data' ? 'DATA PLANE' : 'BOTH PLANES';
+
+      newHtml += `<div style="background:rgba(52,211,153,.04);border:1px solid rgba(52,211,153,.15);border-radius:6px;padding:10px 12px;margin-bottom:8px">`;
+      newHtml += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--green)">${m.name}</span>
+        <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(${m.plane==='data'?'251,146,60':'34,211,238'},.12);color:${planeColor};font-weight:600">${planeLabel}</span>
+        <span style="font-size:9px;color:var(--text-dim);margin-left:auto">${m.type}</span>
+      </div>`;
+      newHtml += `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">${m.desc}</div>`;
+      newHtml += `<div style="font-size:10px;color:var(--text-dim)"><span style="color:var(--text)">${mainSeries.length} series</span> active on this cluster`;
+
+      if (m.subMetrics.length > 0) {
+        const subInfo = m.subMetrics.map(s => {
+          const sub = newNames.get(m.name + s) || [];
+          totalSeries += sub.length;
+          return `${m.name}${s}: ${sub.length}`;
+        }).join(', ');
+        newHtml += ` <span style="color:var(--text-dim)">(+ Prometheus auto-generates: ${subInfo})</span>`;
+      }
+      newHtml += `</div></div>`;
+    }
+
+    newHtml += `<div style="margin-top:12px;font-size:12px;color:var(--text-dim);border-top:1px solid var(--border);padding-top:10px">
+      <strong style="color:var(--green)">4 core metrics</strong> (2 counters + 1 histogram + 1 rejection counter).
+      <br><br><strong>Why does Prometheus show more than 4 names?</strong> The histogram (<code style="font-size:10px">duration_seconds</code>) automatically expands into <code style="font-size:10px">_sum</code>, <code style="font-size:10px">_count</code>, and <code style="font-size:10px">_bucket</code> sub-metrics &mdash; this is standard Prometheus behavior, not extra metrics we created.
+      <br><br><strong>What is a "series"?</strong> Each unique combination of metric name + labels is one series. For example, <code style="font-size:10px">requests_total{method="tools/call", server="weather-mcp", status="ok"}</code> is 1 series. More MCP servers and tools = more series, bounded by a MAX_TOOL_LABELS=512 cap.
+    </div>`;
+    newEl.innerHTML = newHtml;
+
+  } catch (e) {
+    document.getElementById('existing-metrics-list').innerHTML = '<div style="color:var(--red)">Error loading: ' + e.message + '</div>';
+  }
+}
+
+// Load gap data when tab is first shown
+let gapLoaded = false;
+const origSwitchTab = switchTab;
+
+// ── Tab switching ──
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    const tabName = b.textContent.toLowerCase().replace(/\s/g,'');
+    b.classList.toggle('active', tabName === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + name));
+  if (name === 'gapanalysis' && !gapLoaded) { gapLoaded = true; loadGapData(); }
+}
+
+// ── Metrics ──
+async function refreshMetrics() {
+  try {
+    const resp = await fetch('/api/metrics');
+    if (!resp.ok) throw new Error(resp.status);
+    const raw = await resp.text();
+    document.getElementById('statusDot').className = 'dot ok';
+    document.getElementById('connStatus').textContent = 'Connected to Praxis';
+    document.getElementById('rawMetrics').textContent = raw;
+    document.getElementById('lastRefresh').textContent = 'Last refresh: ' + new Date().toLocaleTimeString();
+    const m = parseMetrics(raw);
+    document.getElementById('m-total-req').textContent = m.totalReq.toLocaleString();
+    document.getElementById('m-total-tools').textContent = m.totalTools.toLocaleString();
+    document.getElementById('m-rejections').textContent = m.totalRej.toLocaleString();
+    document.getElementById('m-avg-lat').textContent = m.latCount > 0 ? (m.latSum / m.latCount * 1000).toFixed(1) + 'ms' : '--';
+    renderBars('bars-plane', [
+      { label: 'Control Plane (init, list, ping)', value: m.ctrlReq, color: '#22d3ee' },
+      { label: 'Data Plane (tools/call)', value: m.dataReq, color: '#fb923c' }
+    ]);
+    renderBars('bars-method', Object.entries(m.byMethod).sort((a,b) => b[1]-a[1]).map(([k,v]) => {
+      const isCtrl = ['initialize','tools/list','ping','server/discover'].includes(k);
+      return { label: k, value: v, color: isCtrl ? '#22d3ee' : '#fb923c' };
+    }));
+    renderBars('bars-tools', Object.entries(m.byTool).sort((a,b) => b[1]-a[1]).map(([k,v]) => ({ label: k, value: v, color: '#34d399' })));
+    renderBars('bars-latency', Object.entries(m.quantiles).sort((a,b) => b[1]-a[1]).map(([k,v]) => ({ label: k, value: +(v*1000).toFixed(1), color: '#a78bfa', suffix: 'ms' })));
+  } catch (e) {
+    document.getElementById('statusDot').className = 'dot err';
+    document.getElementById('connStatus').textContent = 'Connection error: ' + e.message;
+  }
+}
+
+function parseMetrics(raw) {
+  const m = { totalReq:0, totalTools:0, totalRej:0, latSum:0, latCount:0, ctrlReq:0, dataReq:0, byMethod:{}, byTool:{}, quantiles:{} };
+  const ctrl = new Set(['initialize','tools/list','ping','server/discover']);
+  for (const line of raw.split('\n')) {
+    if (line.startsWith('#') || !line.trim()) continue;
+    let match;
+    if ((match = line.match(/^praxis_mcp_requests_total\{([^}]*)\}\s+([\d.]+)/))) {
+      const lb = parseLbl(match[1]), v = +match[2]; m.totalReq += v;
+      const method = lb.method || 'unknown'; m.byMethod[method] = (m.byMethod[method]||0) + v;
+      if (ctrl.has(method)) m.ctrlReq += v; else m.dataReq += v;
+    } else if ((match = line.match(/^praxis_mcp_tool_calls_total\{([^}]*)\}\s+([\d.]+)/))) {
+      const lb = parseLbl(match[1]), v = +match[2]; m.totalTools += v;
+      const tool = lb.tool || 'unknown'; m.byTool[tool] = (m.byTool[tool]||0) + v;
+    } else if ((match = line.match(/^praxis_mcp_filter_rejections_total\{[^}]*\}\s+([\d.]+)/))) {
+      m.totalRej += +match[1];
+    } else if ((match = line.match(/^praxis_mcp_tool_call_duration_seconds_sum[{\s].*?([\d.]+)$/))) {
+      m.latSum += +match[1];
+    } else if ((match = line.match(/^praxis_mcp_tool_call_duration_seconds_count[{\s].*?([\d.]+)$/))) {
+      m.latCount += +match[1];
+    } else if ((match = line.match(/^praxis_mcp_tool_call_duration_seconds\{([^}]*)\}\s+([\d.]+)/))) {
+      const lb = parseLbl(match[1]); if (lb.quantile) { m.quantiles[(lb.server||'')+ ' p'+(+lb.quantile*100)] = +match[2]; }
+    }
+  }
+  return m;
+}
+function parseLbl(s) { const o={}; let m; const r=/(\w+)="([^"]*)"/g; while((m=r.exec(s)))o[m[1]]=m[2]; return o; }
+
+function renderBars(id, items) {
+  const el = document.getElementById(id);
+  if (!items.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px">No data yet &mdash; send requests from Test Lab</div>'; return; }
+  const max = Math.max(...items.map(i=>i.value), 1);
+  el.innerHTML = items.map(i => `<div class="bar-row"><div class="bar-label">${i.label}</div><div class="bar-track"><div class="bar-fill" style="width:${(i.value/max*100).toFixed(1)}%;background:${i.color}"></div></div><div class="bar-val">${i.value.toLocaleString()}${i.suffix||''}</div></div>`).join('');
+}
+
+// ── Test Lab ──
+async function sendTool(server, tool, args, btn) {
+  const orig = btn.textContent; btn.textContent = '...'; btn.disabled = true;
+  const el = document.getElementById('r-'+server+'-'+tool);
+  try {
+    const r = await fetch('/api/mcp', { method:'POST', headers:{'Content-Type':'application/json','Mcp-Protocol-Version':'2025-11-25','Mcp-Method':'tools/call','Mcp-Target-Server':server}, body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:tool,arguments:args}}) });
+    const d = await r.json(); el.textContent = JSON.stringify(d,null,2); el.classList.add('show'); el.style.color = d.error?'var(--red)':'var(--green)';
+  } catch(e) { el.textContent='Error: '+e.message; el.classList.add('show'); el.style.color='var(--red)'; }
+  btn.textContent = orig; btn.disabled = false; setTimeout(refreshMetrics, 500);
+}
+async function sendToolsList(server, btn) {
+  const orig = btn.textContent; btn.textContent = '...'; btn.disabled = true;
+  const el = document.getElementById('r-'+server+'-list');
+  try {
+    const r = await fetch('/api/mcp', { method:'POST', headers:{'Content-Type':'application/json','Mcp-Protocol-Version':'2025-11-25','Mcp-Method':'tools/list','Mcp-Target-Server':server}, body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}}) });
+    const d = await r.json(); el.textContent=JSON.stringify(d,null,2); el.classList.add('show'); el.style.color='var(--accent)';
+  } catch(e) { el.textContent='Error: '+e.message; el.classList.add('show'); el.style.color='var(--red)'; }
+  btn.textContent=orig; btn.disabled=false; setTimeout(refreshMetrics, 500);
+}
+async function sendMalformed(btn) {
+  const orig=btn.textContent; btn.textContent='Sending...'; btn.disabled=true;
+  const el=document.getElementById('r-bulk');
+  try { const r=await fetch('/api/mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"jsonrpc":"2.0","method":"tools/call","id":99,"params":{}}'}); const t=await r.text(); el.textContent='Response ('+r.status+'): '+t; el.classList.add('show'); el.style.color='var(--amber)'; }
+  catch(e) { el.textContent='Error: '+e.message; el.classList.add('show'); el.style.color='var(--red)'; }
+  btn.textContent=orig; btn.disabled=false; setTimeout(refreshMetrics,500);
+}
+function sendSilent(server,tool,args) {
+  return fetch('/api/mcp',{method:'POST',headers:{'Content-Type':'application/json','Mcp-Protocol-Version':'2025-11-25','Mcp-Method':'tools/call','Mcp-Target-Server':server},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:tool,arguments:args}})}).then(r=>r.json());
+}
+async function bulkTest(btn) {
+  const orig=btn.textContent; btn.textContent='Sending 10...'; btn.disabled=true;
+  const el=document.getElementById('r-bulk');
+  const calls=[sendSilent('weather','get_weather',{city:'NYC'}),sendSilent('weather','forecast',{city:'LA',days:3}),sendSilent('calculator','add',{a:10,b:20}),sendSilent('calculator','multiply',{a:5,b:5}),sendSilent('calculator','factorial',{n:8}),sendSilent('translator','translate',{text:'Hello',to_lang:'es'}),sendSilent('translator','detect_language',{text:'Bonjour'}),sendSilent('weather','get_weather',{city:'Tokyo'}),sendSilent('calculator','add',{a:100,b:200}),sendSilent('translator','translate',{text:'World',to_lang:'fr'})];
+  const res = await Promise.allSettled(calls);
+  el.textContent = `Bulk test: ${res.filter(r=>r.status==='fulfilled').length}/10 OK. Check Metrics tab.`;
+  el.classList.add('show'); el.style.color='var(--green)';
+  btn.textContent=orig; btn.disabled=false; setTimeout(refreshMetrics,500);
+}
+
+// ── Prometheus helpers ──
+function copyQ(btn) {
+  const code = btn.parentElement.querySelector('.q-code').textContent;
+  const orig = btn.textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent='Copied!';
+    btn.style.background='rgba(52,211,153,.2)';
+    btn.style.borderColor='rgba(52,211,153,.5)';
+    btn.style.color='#34d399';
+    setTimeout(()=>{ btn.textContent=orig; btn.style.background=''; btn.style.borderColor=''; btn.style.color=''; },1500);
+  });
+}
+
+// ── Architecture animations ──
+const PATHS = {
+  weather:    [{x:80,y:215},{x:260,y:215},{x:465,y:185},{x:590,y:185},{x:675,y:185},{x:700,y:150},{x:885,y:91}],
+  calculator: [{x:80,y:215},{x:260,y:215},{x:465,y:185},{x:590,y:185},{x:675,y:185},{x:700,y:185},{x:885,y:185}],
+  translator: [{x:80,y:215},{x:260,y:215},{x:465,y:185},{x:590,y:185},{x:675,y:185},{x:700,y:220},{x:885,y:279}],
+  ctrl:       [{x:80,y:215},{x:260,y:215},{x:465,y:185},{x:465,y:130},{x:465,y:115},{x:360,y:115},{x:360,y:205}],
+  reject:     [{x:80,y:215},{x:260,y:215},{x:465,y:185},{x:505,y:250}]
+};
+
+let particleId = 0;
+function animateParticle(pathKey, color, glowFilter) {
+  const pts = PATHS[pathKey]; if (!pts) return;
+  const svg = document.getElementById('archSvg');
+  const g = document.getElementById('particles');
+  const id = 'p' + (particleId++);
+
+  // Create circle + glow
+  const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  circle.setAttribute('r', '6');
+  circle.setAttribute('fill', color);
+  circle.setAttribute('filter', glowFilter);
+  circle.setAttribute('opacity', '0.9');
+  circle.id = id;
+  g.appendChild(circle);
+
+  // Trail
+  const trail = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  trail.setAttribute('r', '4');
+  trail.setAttribute('fill', color);
+  trail.setAttribute('opacity', '0.3');
+  trail.id = id + '-trail';
+  g.insertBefore(trail, circle);
+
+  // Build total path length
+  let totalLen = 0;
+  for (let i = 1; i < pts.length; i++) {
+    totalLen += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+  }
+
+  const duration = 2000 + totalLen * 1.5; // ms
+  const startTime = performance.now();
+
+  function step(now) {
+    const t = Math.min((now - startTime) / duration, 1);
+    const dist = t * totalLen;
+
+    // Find position along path
+    let accum = 0;
+    let px = pts[0].x, py = pts[0].y;
+    for (let i = 1; i < pts.length; i++) {
+      const segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+      if (accum + segLen >= dist) {
+        const frac = (dist - accum) / segLen;
+        px = pts[i-1].x + (pts[i].x - pts[i-1].x) * frac;
+        py = pts[i-1].y + (pts[i].y - pts[i-1].y) * frac;
+        break;
+      }
+      accum += segLen;
+      px = pts[i].x; py = pts[i].y;
+    }
+
+    circle.setAttribute('cx', px);
+    circle.setAttribute('cy', py);
+
+    // Trail follows with delay
+    const t2 = Math.max(0, t - 0.08);
+    const dist2 = t2 * totalLen;
+    let accum2 = 0, tx = pts[0].x, ty = pts[0].y;
+    for (let i = 1; i < pts.length; i++) {
+      const sl = Math.hypot(pts[i].x-pts[i-1].x, pts[i].y-pts[i-1].y);
+      if (accum2 + sl >= dist2) { const f=(dist2-accum2)/sl; tx=pts[i-1].x+(pts[i].x-pts[i-1].x)*f; ty=pts[i-1].y+(pts[i].y-pts[i-1].y)*f; break; }
+      accum2 += sl; tx=pts[i].x; ty=pts[i].y;
+    }
+    trail.setAttribute('cx', tx); trail.setAttribute('cy', ty);
+    trail.setAttribute('opacity', 0.3 * (1 - t));
+
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      // Pulse at endpoint then remove
+      circle.setAttribute('r', '10'); circle.setAttribute('opacity', '0.5');
+      setTimeout(() => { circle.remove(); trail.remove(); }, 400);
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function archSendData(server) {
+  const colors = { weather: '#34d399', calculator: '#fbbf24', translator: '#a78bfa' };
+  animateParticle(server, colors[server] || '#fb923c', 'url(#glow-orange)');
+  // Send real request
+  const tools = { weather: ['get_weather',{city:'NYC'}], calculator: ['add',{a:7,b:3}], translator: ['translate',{text:'Hi',to_lang:'es'}] };
+  const [tool, args] = tools[server];
+  sendSilent(server, tool, args).then(() => {
+    document.getElementById('archStatus').textContent = server + '/' + tool + ' OK';
+    setTimeout(refreshMetrics, 500);
+  });
+}
+
+function archSendCtrl() {
+  animateParticle('ctrl', '#22d3ee', 'url(#glow-cyan)');
+  fetch('/api/mcp', { method:'POST', headers:{'Content-Type':'application/json','Mcp-Protocol-Version':'2025-11-25','Mcp-Method':'tools/list','Mcp-Target-Server':'weather'}, body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}}) })
+    .then(() => { document.getElementById('archStatus').textContent = 'tools/list OK (control plane)'; setTimeout(refreshMetrics,500); });
+}
+
+function archSendReject() {
+  animateParticle('reject', '#f87171', 'url(#glow-red)');
+  fetch('/api/mcp', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{"jsonrpc":"2.0","method":"tools/call","id":99,"params":{}}' })
+    .then(() => { document.getElementById('archStatus').textContent = 'Invalid tools/call → rejected (invalid_params)'; setTimeout(refreshMetrics,500); });
+}
+
+function archBurst() {
+  const servers = ['weather','calculator','translator'];
+  for (let i = 0; i < 15; i++) {
+    setTimeout(() => {
+      const r = Math.random();
+      if (r < 0.6) { archSendData(servers[Math.floor(Math.random()*3)]); }
+      else if (r < 0.85) { archSendCtrl(); }
+      else { archSendReject(); }
+    }, i * 200);
+  }
+}
+
+// ── Init ──
+refreshMetrics();
+setInterval(refreshMetrics, 8000);
+</script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+# Praxis AI test config for MCP metrics verification
+#
+# This config:
+#   1. Listens on :8080 for MCP traffic
+#   2. Exposes Prometheus metrics on :9902/metrics
+#   3. Routes tools/call to mock MCP server on :3001
+
+admin:
+  address: "127.0.0.1:9901"
+  metrics_address: "127.0.0.1:9902"
+
+metrics:
+  filter_duration: true
+
+listeners:
+  - name: default
+    address: "127.0.0.1:8080"
+    filter_chains: [main]
+
+filter_chains:
+  - name: main
+    filters:
+      - filter: mcp
+        path: /mcp
+        max_body_bytes: 65536
+        protocol_profile: stateless
+        cache_ttl_ms: 300000
+        cache_scope: public
+        servers:
+          - name: weather
+            cluster: weather-mcp
+            path: /mcp
+            tool_prefix: "weather_"
+            tools:
+              - name: get_weather
+                description: Get current weather for a city
+                inputSchema:
+                  type: object
+                  properties:
+                    city:
+                      type: string
+                  required:
+                    - city
+              - name: forecast
+                description: Get 5-day weather forecast
+                inputSchema:
+                  type: object
+                  properties:
+                    city:
+                      type: string
+                    days:
+                      type: integer
+
+      - filter: load_balancer
+        clusters:
+          - name: weather-mcp
+            endpoints:
+              - "127.0.0.1:3001"
+
+insecure_options:
+  allow_private_endpoints: true

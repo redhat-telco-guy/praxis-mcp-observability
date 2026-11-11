@@ -1,0 +1,19 @@
+# Build artifacts
+target/
+*.o
+*.d
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Temp
+*.tmp
+*.bak
