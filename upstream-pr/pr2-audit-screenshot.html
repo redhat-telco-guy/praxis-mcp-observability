@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Praxis MCP Audit Dashboard — Grafana</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#181b1f;--panel:#1f2129;--border:#2c3038;--text:#d8d9da;--text-dim:#8e8e8e;
+  --green:#73bf69;--red:#f2495c;--blue:#5794f2;--orange:#ff9830;--purple:#b877d9;
+  --mono:'Menlo','Consolas','JetBrains Mono',monospace;
+  --sans:system-ui,-apple-system,sans-serif;
+}
+html,body{height:100%;font-family:var(--sans);background:var(--bg);color:var(--text)}
+
+.grafana-header{background:#1a1b2e;padding:14px 24px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #2c2d44}
+.grafana-logo{width:24px;height:24px;border-radius:4px;background:linear-gradient(135deg,#ff6600,#f9b234);display:flex;align-items:center;justify-content:center}
+.grafana-logo svg{width:14px;height:14px}
+.grafana-header h1{font-size:16px;font-weight:500;letter-spacing:-.2px}
+.grafana-header .breadcrumb{font-size:12px;color:var(--text-dim)}
+.grafana-header .time-range{margin-left:auto;font-size:12px;color:var(--text-dim);background:#111226;border:1px solid #2c2d44;padding:5px 12px;border-radius:4px;font-family:var(--mono)}
+
+.dashboard{padding:16px;display:flex;flex-direction:column;gap:16px}
+
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+.panel-header{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.panel-title{font-size:14px;font-weight:500}
+.panel-desc{font-size:11px;color:var(--text-dim);margin-left:auto}
+.panel-body{padding:16px}
+
+/* Bar gauge panel */
+.bar-gauge{display:flex;flex-direction:column;gap:12px}
+.gauge-row{display:flex;align-items:center;gap:12px}
+.gauge-label{font-size:13px;font-family:var(--mono);width:90px;text-align:right;flex-shrink:0}
+.gauge-track{flex:1;height:32px;background:rgba(255,255,255,.04);border-radius:3px;overflow:hidden;position:relative}
+.gauge-fill{height:100%;border-radius:3px;display:flex;align-items:center;justify-content:flex-end;padding-right:12px;font-family:var(--mono);font-size:14px;font-weight:700;color:#fff}
+.gauge-fill.green{background:linear-gradient(90deg,rgba(115,191,105,.2),var(--green))}
+.gauge-fill.red{background:linear-gradient(90deg,rgba(242,73,92,.2),var(--red))}
+.gauge-fill.blue{background:linear-gradient(90deg,rgba(87,148,242,.2),var(--blue))}
+
+/* Table panel */
+.pod-table{width:100%;border-collapse:collapse}
+.pod-table th{text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);padding:8px 12px;border-bottom:1px solid var(--border)}
+.pod-table td{font-size:13px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--mono)}
+.pod-table tr:last-child td{border-bottom:none}
+.pod-table .count{font-weight:700;color:var(--blue)}
+.pod-table .bar-cell{width:200px}
+.pod-table .mini-bar{height:6px;background:rgba(255,255,255,.04);border-radius:3px;overflow:hidden}
+.pod-table .mini-fill{height:100%;border-radius:3px;background:var(--blue)}
+
+/* Log panel */
+.log-stream{font-family:var(--mono);font-size:12px;line-height:1.9}
+.log-line{display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,.03);padding:4px 0}
+.log-line:last-child{border-bottom:none}
+.log-ts{color:var(--text-dim);width:150px;flex-shrink:0}
+.log-event{width:160px;flex-shrink:0;font-weight:600}
+.log-event.completed{color:var(--green)}
+.log-event.rejected{color:var(--red)}
+.log-event.initiated{color:var(--blue)}
+.log-method{color:var(--orange);width:85px;flex-shrink:0}
+.log-tool{color:var(--purple);width:100px;flex-shrink:0}
+.log-outcome{width:70px;flex-shrink:0}
+.log-outcome.ok{color:var(--green)}
+.log-outcome.rejected{color:var(--red)}
+.log-outcome.initiated{color:var(--blue)}
+.log-latency{width:60px;flex-shrink:0;color:var(--text-dim)}
+.log-cluster{width:120px;flex-shrink:0;color:var(--text-dim)}
+.log-tenant{color:var(--text-dim)}
+.log-dash{color:#555}
+</style>
+</head>
+<body>
+
+<div class="grafana-header">
+  <div class="grafana-logo">
+    <svg viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+  </div>
+  <h1>Praxis MCP Audit Dashboard</h1>
+  <span class="breadcrumb">praxis-mcp-test / dashboards</span>
+  <span class="time-range">Last 24 hours &nbsp; &#9660;</span>
+</div>
+
+<div class="dashboard">
+
+  <!-- Panel 1: Audit Events by Outcome -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Audit Events by Outcome</div>
+      <div class="panel-desc">LogQL regexp extraction &middot; sum by (outcome)</div>
+    </div>
+    <div class="panel-body">
+      <div class="bar-gauge">
+        <div class="gauge-row">
+          <div class="gauge-label">completed</div>
+          <div class="gauge-track"><div class="gauge-fill green" style="width:52%">47</div></div>
+        </div>
+        <div class="gauge-row">
+          <div class="gauge-label">initiated</div>
+          <div class="gauge-track"><div class="gauge-fill blue" style="width:34%">31</div></div>
+        </div>
+        <div class="gauge-row">
+          <div class="gauge-label">rejected</div>
+          <div class="gauge-track"><div class="gauge-fill red" style="width:13%">12</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel 2: Audit Volume by Pod -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Audit Volume by Pod</div>
+      <div class="panel-desc">count_over_time by kubernetes_pod_name</div>
+    </div>
+    <div class="panel-body">
+      <table class="pod-table">
+        <thead>
+          <tr>
+            <th>Pod</th>
+            <th>Events</th>
+            <th class="bar-cell"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>praxis-ai-678f64dfb4-vxp8b</td>
+            <td class="count">54</td>
+            <td class="bar-cell"><div class="mini-bar"><div class="mini-fill" style="width:100%"></div></div></td>
+          </tr>
+          <tr>
+            <td>praxis-ai-678f64dfb4-k2m7x</td>
+            <td class="count">36</td>
+            <td class="bar-cell"><div class="mini-bar"><div class="mini-fill" style="width:67%"></div></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Panel 3: Recent Audit Events -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Recent Audit Events</div>
+      <div class="panel-desc">Live stream &middot; {kubernetes_namespace_name="praxis-mcp-test"} |= "mcp.call."</div>
+    </div>
+    <div class="panel-body">
+      <div class="log-stream">
+        <div class="log-line">
+          <span class="log-ts">2026-11-16 20:32:47</span>
+          <span class="log-event completed">mcp.call.completed</span>
+          <span class="log-method">tools/call</span>
+          <span class="log-tool">get_weather</span>
+          <span class="log-outcome ok">ok</span>
+          <span class="log-latency">101ms</span>
+          <span class="log-cluster">weather-mcp</span>
+          <span class="log-tenant">test-tenant-1</span>
+        </div>
+        <div class="log-line">
+          <span class="log-ts">2026-11-16 20:32:46</span>
+          <span class="log-event rejected">mcp.call.rejected</span>
+          <span class="log-method">tools/call</span>
+          <span class="log-tool log-dash">&mdash;</span>
+          <span class="log-outcome rejected">rejected</span>
+          <span class="log-latency log-dash">&mdash;</span>
+          <span class="log-cluster log-dash">&mdash;</span>
+          <span class="log-tenant">test-tenant-2</span>
+        </div>
+        <div class="log-line">
+          <span class="log-ts">2026-11-16 20:32:45</span>
+          <span class="log-event initiated">mcp.call.initiated</span>
+          <span class="log-method">tools/list</span>
+          <span class="log-tool log-dash">&mdash;</span>
+          <span class="log-outcome initiated">initiated</span>
+          <span class="log-latency log-dash">&mdash;</span>
+          <span class="log-cluster log-dash">&mdash;</span>
+          <span class="log-tenant">test-tenant-3</span>
+        </div>
+        <div class="log-line">
+          <span class="log-ts">2026-11-16 20:31:12</span>
+          <span class="log-event completed">mcp.call.completed</span>
+          <span class="log-method">tools/call</span>
+          <span class="log-tool">calculate</span>
+          <span class="log-outcome ok">ok</span>
+          <span class="log-latency">89ms</span>
+          <span class="log-cluster">calculator-mcp</span>
+          <span class="log-tenant">test-tenant-1</span>
+        </div>
+        <div class="log-line">
+          <span class="log-ts">2026-11-16 20:30:58</span>
+          <span class="log-event completed">mcp.call.completed</span>
+          <span class="log-method">tools/call</span>
+          <span class="log-tool">translate</span>
+          <span class="log-outcome ok">ok</span>
+          <span class="log-latency">156ms</span>
+          <span class="log-cluster">translator-mcp</span>
+          <span class="log-tenant">test-tenant-1</span>
+        </div>
+        <div class="log-line">
+          <span class="log-ts">2026-11-16 20:30:41</span>
+          <span class="log-event completed">mcp.call.completed</span>
+          <span class="log-method">tools/call</span>
+          <span class="log-tool">get_weather</span>
+          <span class="log-outcome ok">ok</span>
+          <span class="log-latency">94ms</span>
+          <span class="log-cluster">weather-mcp</span>
+          <span class="log-tenant">test-tenant-1</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
