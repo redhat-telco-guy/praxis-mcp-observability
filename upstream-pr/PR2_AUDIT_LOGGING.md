@@ -43,55 +43,13 @@ This is what compliance teams ask for and what SREs need for incident triage. Co
 
 ## Architecture
 
-```
-                    ┌─────────────────────────────────────────────┐
-                    │          OpenShift Cluster                   │
-                    │                                             │
-  ┌──────────┐     │  ┌───────────────────┐     ┌─────────────┐  │
-  │  Client   │────▶│  │  Praxis AI Gateway │────▶│ MCP backends│  │
-  │ (curl/SDK)│     │  │                   │     │ (mock svcs) │  │
-  └──────────┘     │  │  ┌─────────────┐  │     └─────────────┘  │
-                    │  │  │ MCP Filter  │  │                      │
-                    │  │  │             │  │                      │
-                    │  │  │ metrics.rs  │◀─┼── PR #1: 4 Prometheus│
-                    │  │  │             │  │   counters           │
-                    │  │  │ audit.rs    │◀─┼── PR #2: 3 structured│
-                    │  │  │  (THIS PR)  │  │   log events         │
-                    │  │  └─────────────┘  │                      │
-                    │  │                   │                      │
-                    │  │  :9902/metrics ───┼──▶ Prometheus         │
-                    │  │                   │                      │
-                    │  │  stdout ──────────┼──▶ Vector ──▶ Loki   │
-                    │  │  (audit events)   │   (CLF)              │
-                    │  └───────────────────┘                      │
-                    │                                             │
-                    │  ┌──────────┐  ┌───────────┐  ┌──────────┐ │
-                    │  │ Grafana  │  │OCP Console│  │   ACS    │ │
-                    │  │ Loki     │  │Observe →  │  │ StackRox │ │
-                    │  │ Dashboard│  │Logs       │  │ Alerts   │ │
-                    │  └──────────┘  └───────────┘  └──────────┘ │
-                    └─────────────────────────────────────────────┘
-```
+![Praxis MCP Audit Logging Architecture](upstream-pr/architecture-audit.png)
 
 ### Log pipeline
 
-```
-Praxis pod stdout
-       │
-       ▼
-  ClusterLogForwarder (Vector)
-       │
-       ├── parse-json filter (parse container log JSON)
-       ├── audit-only filter (drop non mcp.call.* lines)
-       └── prune-fields filter (strip noisy k8s annotations)
-       │
-       ▼
-  LokiStack (openshift-logging)
-       │
-       ├──▶ Grafana (Loki datasource, 3-panel dashboard)
-       ├──▶ OCP Console (Observe → Logs)
-       └──▶ ACS (StackRox runtime policy alerts)
-```
+`Praxis pod stdout` → `ClusterLogForwarder (Vector)` → `LokiStack` → `Grafana / OCP Console / ACS`
+
+The ClusterLogForwarder applies three Vector filters: **parse-json** (parse container log JSON), **audit-only** (drop non `mcp.call.*` lines), and **prune-fields** (strip noisy k8s annotations).
 
 ---
 
@@ -159,52 +117,9 @@ This PR adds `audit.rs` alongside the existing `metrics.rs` from PR #1. Both are
 
 ### Build chain
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                     OCP Build Pipeline                        │
-│                                                              │
-│  1. Clone praxis-proxy/ai from GitHub (HEAD)                 │
-│     ┌────────────────────────────────────────┐               │
-│     │  upstream source (unmodified)           │               │
-│     │  filters/src/agentic/mcp/mod.rs        │               │
-│     └────────────────────────────────────────┘               │
-│                        │                                     │
-│  2. Apply PR #1 patches (metrics)                            │
-│     ┌────────────────────────────────────────┐               │
-│     │  + filters/src/agentic/mcp/metrics.rs  │  ◀── PR #1   │
-│     │  mod.rs: + mod metrics                 │               │
-│     │          + record_mcp_request()        │               │
-│     │          + record_tool_call_completed() │               │
-│     │          + record_filter_rejection()   │               │
-│     └────────────────────────────────────────┘               │
-│                        │                                     │
-│  3. Apply PR #2 patches (audit) ◀── THIS PR                 │
-│     ┌────────────────────────────────────────┐               │
-│     │  + filters/src/agentic/mcp/audit.rs    │  ◀── NEW     │
-│     │  mod.rs: + mod audit                   │               │
-│     │          + emit_rejected()             │               │
-│     │          + emit_non_tool()             │               │
-│     │          + emit_completed()            │               │
-│     │          + metadata storage for        │               │
-│     │            cross-phase carry-over      │               │
-│     └────────────────────────────────────────┘               │
-│                        │                                     │
-│  4. Post-patch fixups                                        │
-│     • Inject log_audit_enabled() startup log                 │
-│     • Fix envelope:: qualification lint                      │
-│     • Strip BuildKit --mount=type=cache (OCP Buildah)        │
-│     • Clear stale cargo fingerprints for recompilation       │
-│                        │                                     │
-│  5. cargo build --release --features full                    │
-│     Builder:  rust:1.85-alpine3.21                           │
-│     Runtime:  alpine:3.21 (UID 1001)                         │
-│                        │                                     │
-│  6. Push to internal registry                                │
-│     image-registry.openshift-image-registry.svc:5000/        │
-│       praxis-mcp-test/praxis-ai:mcp-metrics                  │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
+![OCP Build Pipeline](upstream-pr/build-chain.png)
+
+This PR adds steps 3-4 on top of PR #1's pipeline: copy `audit.rs`, run `patch-audit-mod-rs.py` to wire `emit_rejected()`, `emit_non_tool()`, `emit_completed()` and metadata storage into `mod.rs`, plus post-patch fixups (startup log, lint fixes, Containerfile patches for OCP Buildah).
 
 ### Build command
 
@@ -323,13 +238,7 @@ All tests passed.
 
 **Grafana audit dashboard** (live from OCP cluster `ai154.dl154.dfw.ocp.run`):
 
-> See [pr2-audit-screenshot.html](upstream-pr/pr2-audit-screenshot.html) for the interactive dashboard rendering. Live data below.
-
-| Panel | Result |
-|-------|--------|
-| Audit Events by Outcome | completed=47, initiated=31, rejected=12 |
-| Audit Volume by Pod | praxis-ai-678f64dfb4-vxp8b → 54, praxis-ai-678f64dfb4-k2m7x → 36 |
-| Recent Audit Events | 6 most recent events with full structured fields |
+![Praxis MCP Audit Dashboard](upstream-pr/audit-dashboard.png)
 
 The dashboard uses 3 LogQL queries (not 6 — we discovered that OCP Logging 6.7's LokiStack gateway drops concurrent queries beyond its default limit, so we consolidated using `regexp` extraction):
 
