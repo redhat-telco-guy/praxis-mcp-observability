@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Praxis MCP Metrics Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f1117;--surface:#181b24;--surface2:#1e222d;--border:#2a2f3c;
+  --text:#e2e4ea;--text-dim:#8b90a0;--accent:#6c8cff;
+  --green:#34d399;--green-dim:rgba(52,211,153,.12);
+  --orange:#fb923c;--orange-dim:rgba(251,146,60,.12);
+  --cyan:#22d3ee;--cyan-dim:rgba(34,211,238,.12);
+  --purple:#a78bfa;
+  --mono:'Menlo','Consolas','JetBrains Mono',monospace;
+  --sans:system-ui,-apple-system,sans-serif;
+}
+html,body{height:100%;font-family:var(--sans);background:var(--bg);color:var(--text)}
+
+.header{padding:20px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.header h1{font-size:18px;font-weight:600;letter-spacing:-.3px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block}
+.badge{font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;letter-spacing:.5px;font-family:var(--mono);background:var(--green-dim);color:var(--green);border:1px solid rgba(52,211,153,.25)}
+.header .sub{color:var(--text-dim);font-size:13px;margin-left:auto}
+
+.content{padding:28px 32px;overflow-y:auto}
+
+.info-banner{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 22px;margin-bottom:24px;line-height:1.7;font-size:14px;color:var(--text-dim)}
+.info-banner strong{color:var(--text)}
+.info-banner code{font-family:var(--mono);font-size:12px;color:var(--accent);background:var(--bg);padding:2px 6px;border-radius:3px}
+
+.card-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:32px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.card.orange::before{background:linear-gradient(90deg,var(--orange),rgba(251,146,60,.3))}
+.card.green::before{background:linear-gradient(90deg,var(--green),rgba(52,211,153,.3))}
+.card.cyan::before{background:linear-gradient(90deg,var(--cyan),rgba(34,211,238,.3))}
+.card .lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:6px;font-family:var(--mono)}
+.card .val{font-family:var(--mono);font-size:28px;font-weight:700}
+.card .desc{font-size:12px;color:var(--text-dim);margin-top:6px;line-height:1.5}
+.tag{display:inline-block;font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:3px;margin-top:6px;margin-right:3px;font-weight:600}
+.tag.ctrl{background:rgba(108,140,255,.15);color:var(--accent);border:1px solid rgba(108,140,255,.25)}
+.tag.data{background:var(--green-dim);color:var(--green);border:1px solid rgba(52,211,153,.25)}
+
+.section-hdr{font-size:16px;font-weight:600;margin-bottom:14px;margin-top:8px;display:flex;align-items:center;gap:10px}
+.section-hdr .pill{font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:3px;background:var(--accent);color:#fff;font-weight:600;letter-spacing:.3px}
+
+.chart-section{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px}
+.bar-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.bar-row:last-child{margin-bottom:0}
+.bar-label{font-family:var(--mono);font-size:13px;color:var(--text-dim);width:100px;text-align:right;flex-shrink:0}
+.bar-track{flex:1;height:28px;background:var(--bg);border-radius:4px;overflow:hidden;position:relative}
+.bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:10px;font-family:var(--mono);font-size:12px;font-weight:600;color:#fff;transition:width .6s}
+.bar-fill.accent{background:linear-gradient(90deg,var(--accent),rgba(108,140,255,.6))}
+.bar-fill.green{background:linear-gradient(90deg,var(--green),rgba(52,211,153,.5))}
+.bar-fill.orange{background:linear-gradient(90deg,var(--orange),rgba(251,146,60,.5))}
+.bar-fill.purple{background:linear-gradient(90deg,var(--purple),rgba(167,139,250,.5))}
+.bar-fill.cyan{background:linear-gradient(90deg,var(--cyan),rgba(34,211,238,.5))}
+
+.latency-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.latency-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;text-align:center}
+.latency-card .percentile{font-size:12px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.latency-card .latency-val{font-family:var(--mono);font-size:32px;font-weight:700}
+.latency-card .latency-bar{height:4px;border-radius:2px;margin-top:10px;background:var(--bg)}
+.latency-card .latency-bar-fill{height:100%;border-radius:2px}
+.latency-card.p50 .latency-val{color:var(--green)}
+.latency-card.p50 .latency-bar-fill{background:var(--green)}
+.latency-card.p90 .latency-val{color:var(--orange)}
+.latency-card.p90 .latency-bar-fill{background:var(--orange)}
+.latency-card.p99 .latency-val{color:var(--cyan)}
+.latency-card.p99 .latency-bar-fill{background:var(--cyan)}
+
+.plane-legend{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.plane-legend .leg-item{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500}
+.plane-legend .leg-dot{width:10px;height:10px;border-radius:2px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="dot"></span>
+  <h1>Praxis MCP Metrics Dashboard</h1>
+  <span class="badge">CONNECTED</span>
+  <span class="sub">praxis-mcp-test &middot; ai154.dl154.dfw.ocp.run &middot; Last refresh: 3s ago</span>
+</div>
+
+<div class="content">
+
+  <div class="info-banner">
+    <strong>What am I looking at?</strong> These are the <strong>4 Prometheus metrics</strong> built into the Praxis MCP filter. They capture every MCP JSON-RPC request flowing through the gateway. Metrics are split into
+    <span class="tag ctrl">CONTROL PLANE</span> (initialize, tools/list, ping) and <span class="tag data">DATA PLANE</span> (tools/call) traffic. Scraped by ServiceMonitor on <code>:9902/metrics</code>.
+  </div>
+
+  <div class="card-grid">
+    <div class="card orange">
+      <div class="lbl">PRAXIS_MCP_REQUESTS_TOTAL</div>
+      <div class="val">247</div>
+      <div class="desc">Counts every MCP JSON-RPC request by method + server + status. Both planes.</div>
+      <span class="tag ctrl">CTRL</span><span class="tag data">DATA</span>
+    </div>
+    <div class="card green">
+      <div class="lbl">PRAXIS_MCP_TOOL_CALLS_TOTAL</div>
+      <div class="val">183</div>
+      <div class="desc">Completed tools/call invocations by tool name + server. Data plane only.</div>
+      <span class="tag data">DATA</span>
+    </div>
+    <div class="card orange">
+      <div class="lbl">PRAXIS_MCP_TOOL_CALL_DURATION_SECONDS</div>
+      <div class="val">p50: 42ms</div>
+      <div class="desc">Histogram of tool call round-trip latency (p50/p90/p99). Data plane only.</div>
+      <span class="tag data">DATA</span>
+    </div>
+    <div class="card cyan">
+      <div class="lbl">PRAXIS_MCP_FILTER_REJECTIONS_TOTAL</div>
+      <div class="val">31</div>
+      <div class="desc">Requests rejected by MCP filter (bad JSON, missing method). Both planes.</div>
+      <span class="tag ctrl">CTRL</span><span class="tag data">DATA</span>
+    </div>
+  </div>
+
+  <div class="plane-legend">
+    <div class="leg-item"><div class="leg-dot" style="background:var(--accent)"></div> CONTROL PLANE</div>
+    <div style="font-size:15px;color:var(--text-dim)">vs</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div> DATA PLANE</div>
+    <div style="font-size:16px;font-weight:600;margin-left:4px">Breakdown</div>
+  </div>
+
+  <div class="chart-section">
+    <div class="section-hdr">Requests by MCP Method</div>
+    <div class="bar-row">
+      <div class="bar-label">tools/call</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:74%">183</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">tools/list</div>
+      <div class="bar-track"><div class="bar-fill accent" style="width:17%">42</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">initialize</div>
+      <div class="bar-track"><div class="bar-fill purple" style="width:6%">15</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">ping</div>
+      <div class="bar-track"><div class="bar-fill cyan" style="width:3%">7</div></div>
+    </div>
+  </div>
+
+  <div class="chart-section">
+    <div class="section-hdr">Tool Calls by Tool Name</div>
+    <div class="bar-row">
+      <div class="bar-label">get_weather</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:49%">89</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">calculate</div>
+      <div class="bar-track"><div class="bar-fill orange" style="width:31%">56</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">translate</div>
+      <div class="bar-track"><div class="bar-fill accent" style="width:21%">38</div></div>
+    </div>
+  </div>
+
+  <div class="section-hdr">Latency Quantiles (p50 / p90 / p99)</div>
+  <div class="latency-grid">
+    <div class="latency-card p50">
+      <div class="percentile">p50</div>
+      <div class="latency-val">42ms</div>
+      <div class="latency-bar"><div class="latency-bar-fill" style="width:14%"></div></div>
+    </div>
+    <div class="latency-card p90">
+      <div class="percentile">p90</div>
+      <div class="latency-val">128ms</div>
+      <div class="latency-bar"><div class="latency-bar-fill" style="width:41%"></div></div>
+    </div>
+    <div class="latency-card p99">
+      <div class="percentile">p99</div>
+      <div class="latency-val">310ms</div>
+      <div class="latency-bar"><div class="latency-bar-fill" style="width:100%"></div></div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
