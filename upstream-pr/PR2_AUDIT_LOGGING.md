@@ -161,8 +161,6 @@ This PR adds `audit.rs` alongside the existing `metrics.rs` from PR #1. Both are
 
 ### Build chain
 
-![OCP Build Pipeline](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/build-chain.png)
-
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                     OCP Build Pipeline                        │
