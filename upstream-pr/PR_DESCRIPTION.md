@@ -45,40 +45,7 @@ Competing gateways (Kong AI Gateway, Portkey) already ship tool-level metrics. T
 
 ## Architecture
 
-```
-                                    ┌─────────────────────────────────────────┐
-                                    │          OpenShift Cluster              │
-                                    │                                        │
-  ┌──────────┐    HTTPS    ┌────────┴──────────┐                             │
-  │  Client  │────────────▶│   Praxis Proxy    │                             │
-  │ (curl,   │             │                   │                             │
-  │  agent)  │             │  MCP Filter:      │     ┌───────────────────┐   │
-  └──────────┘             │  ┌─────────────┐  │────▶│  weather-mcp      │   │
-                           │  │ Parse JSON  │  │     │  (mock, port 3001)│   │
-                           │  │ RPC body    │  │     └───────────────────┘   │
-                           │  ├─────────────┤  │                             │
-                           │  │ Validate    │  │     ┌───────────────────┐   │
-                           │  │ headers     │  │────▶│  calculator-mcp   │   │
-                           │  ├─────────────┤  │     │  (mock, port 3002)│   │
-                           │  │ Record      │  │     └───────────────────┘   │
-                           │  │ metrics ◄───┼──┼─── NEW! 4 Prometheus       │
-                           │  ├─────────────┤  │     counters               │
-                           │  │ Route to    │  │     ┌───────────────────┐   │
-                           │  │ backend     │  │────▶│  translator-mcp   │   │
-                           │  └─────────────┘  │     │  (mock, port 3003)│   │
-                           │                   │     └───────────────────┘   │
-                           │  :9902/metrics ───┼──┐                          │
-                           └───────────────────┘  │                          │
-                                                  ▼                          │
-                           ┌───────────────────┐  ┌───────────────────┐      │
-                           │   ServiceMonitor  │─▶│   Prometheus      │      │
-                           │   (scrapes :9902) │  │   (user-workload) │      │
-                           └───────────────────┘  └───────────────────┘      │
-                           ┌───────────────────┐                             │
-                           │  Grafana Dashboard│  Visualizes metrics         │
-                           └───────────────────┘                             │
-                                    └────────────────────────────────────────┘
-```
+![Praxis MCP Metrics Architecture](upstream-pr/architecture-metrics.png)
 
 ### Data flow
 
@@ -98,43 +65,7 @@ The Praxis image is built **entirely on the OCP cluster** — no local Rust tool
 
 ### Build chain
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    OCP Build Pipeline                     │
-│                                                          │
-│  1. Clone praxis-proxy/ai from GitHub (HEAD)             │
-│     ┌──────────────────────────────────────┐             │
-│     │  upstream source (unmodified)         │             │
-│     │  filters/src/agentic/mcp/mod.rs      │             │
-│     └──────────────────────────────────────┘             │
-│                       │                                  │
-│  2. Copy metrics.rs into the source tree                 │
-│     ┌──────────────────────────────────────┐             │
-│     │  + filters/src/agentic/mcp/metrics.rs │  ◀── NEW  │
-│     └──────────────────────────────────────┘             │
-│                       │                                  │
-│  3. Run patch-mod-rs.py to wire metrics in               │
-│     ┌──────────────────────────────────────┐             │
-│     │  mod.rs patched:                      │             │
-│     │  + mod metrics;                       │             │
-│     │  + record_mcp_request() in on_request │             │
-│     │  + record_tool_call_completed()       │             │
-│     │    in on_response                     │             │
-│     │  + record_filter_rejection()          │             │
-│     │    in rejection paths                 │             │
-│     └──────────────────────────────────────┘             │
-│                       │                                  │
-│  4. cargo build --release --features full                │
-│     Builder:  rust:1.85-alpine3.21                       │
-│     Runtime:  alpine:3.21 (UID 1001)                     │
-│     Ports:    8080 (proxy), 9901 (admin), 9902 (metrics) │
-│                       │                                  │
-│  5. Push to internal registry                            │
-│     image-registry.openshift-image-registry.svc:5000/    │
-│       praxis-mcp-test/praxis-ai:mcp-metrics              │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
+![OCP Build Pipeline](upstream-pr/build-chain.png)
 
 ### Build command
 
@@ -211,7 +142,7 @@ curl -sk https://praxis-ai-praxis-mcp-test.apps.ai154.dl154.dfw.ocp.run:9902/met
 
 **Metrics dashboard** (live from OCP cluster `ai154.dl154.dfw.ocp.run`, namespace `praxis-mcp-test`):
 
-> See [pr1-metrics-screenshot.html](upstream-pr/pr1-metrics-screenshot.html) for the interactive version. Screenshot below shows the 4 MCP metrics with live values from test traffic.
+![Praxis MCP Metrics Dashboard](upstream-pr/metrics-dashboard.png)
 
 | Metric | Live value |
 |--------|-----------|
