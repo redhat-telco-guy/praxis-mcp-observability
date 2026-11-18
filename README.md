@@ -76,7 +76,7 @@ Competing gateways (Kong AI Gateway, Portkey) already ship tool-level metrics. T
    - Stores start time in request metadata for latency measurement
 3. **Praxis routes** the request to the correct backend (weather-mcp, calculator-mcp, etc.)
 4. **On response**, the filter records:
-   - `praxis_mcp_tool_calls_total{tool="get_weather", cluster="weather-mcp", status="ok"}`
+   - `praxis_mcp_tool_calls_total{tool="get_weather", cluster="weather-mcp", transport_status="ok"}`
    - `praxis_mcp_tool_call_duration_seconds{tool="get_weather"}` with the measured latency
 5. **If rejected** (missing tool name, bad headers, invalid JSON-RPC):
    - `praxis_mcp_filter_rejections_total{method="tools/call", reason="invalid_params"}`

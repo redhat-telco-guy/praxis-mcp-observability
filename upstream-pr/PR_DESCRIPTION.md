@@ -171,13 +171,13 @@ praxis_mcp_requests_total{method="tools/list",protocol_version="unknown"} 6
 praxis_mcp_requests_total{method="tools/call",protocol_version="2025-11-25"} 30
 
 # TYPE praxis_mcp_tool_calls_total counter
-praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",status="ok"} 14
-praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",status="ok"} 3
+praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",transport_status="ok"} 14
+praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",transport_status="ok"} 3
 
 # TYPE praxis_mcp_filter_rejections_total counter
 praxis_mcp_filter_rejections_total{method="tools/call",reason="invalid_params"} 9
@@ -218,13 +218,13 @@ praxis_mcp_tool_calls_total
 ```
 
 ```
-praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",status="ok"} 14
-praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",status="ok"} 3
+praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",transport_status="ok"} 14
+praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",transport_status="ok"} 3
 ```
 
 ### Verify ServiceMonitor is working
