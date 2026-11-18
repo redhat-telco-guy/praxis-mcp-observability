@@ -41,6 +41,7 @@ use std::{
 
 use arc_swap::ArcSwap;
 use metrics::{Unit, counter, describe_histogram, histogram};
+use praxis_ai_apis::promotion::contains_control_chars;
 
 // ---------------------------------------------------------------------------
 // Metric names
@@ -160,9 +161,10 @@ fn admit_tool(tool: &str) -> &str {
     tool
 }
 
-/// Resolve a tool label, applying length truncation and cardinality bound.
+/// Resolve a tool label, applying control-char rejection, length truncation,
+/// and cardinality bound.
 fn tool_label(tool: &str) -> String {
-    if tool.is_empty() {
+    if tool.is_empty() || contains_control_chars(tool) {
         return "unknown".to_owned();
     }
     // Truncate to MAX_TOOL_NAME_LEN, respecting UTF-8 char boundaries.
