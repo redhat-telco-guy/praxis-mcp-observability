@@ -24,7 +24,7 @@ This clones praxis-proxy/ai, writes `metrics.rs`, patches `mod.rs`, runs `cargo 
 ```bash
 python3 mock-mcp-server.py --port 3001 --error-rate 0.2 --latency-ms 100
 ```
-This starts a fake MCP server that responds to `tools/list`, `tools/call`, and `server/discover`. The `--error-rate 0.2` makes 20% of tool calls fail (so you can verify the `status="error"` label works).
+This starts a fake MCP server that responds to `tools/list`, `tools/call`, and `server/discover`. The `--error-rate 0.2` makes 20% of tool calls fail (so you can verify the `transport_status="error"` label works).
 
 **Terminal 2 — Praxis proxy:**
 ```bash
@@ -57,8 +57,8 @@ After running the simulation, `curl http://127.0.0.1:9902/metrics | grep praxis_
 praxis_mcp_requests_total{method="tools/call",protocol_version="2025-11-25"} 4
 praxis_mcp_requests_total{method="tools/list",protocol_version="2025-11-25"} 2
 praxis_mcp_requests_total{method="server/discover",protocol_version="2025-11-25"} 1
-praxis_mcp_tool_calls_total{cluster="weather-mcp",status="ok",tool="weather_get_weather"} 3
-praxis_mcp_tool_calls_total{cluster="weather-mcp",status="ok",tool="weather_forecast"} 1
+praxis_mcp_tool_calls_total{cluster="weather-mcp",transport_status="ok",tool="weather_get_weather"} 3
+praxis_mcp_tool_calls_total{cluster="weather-mcp",transport_status="ok",tool="weather_forecast"} 1
 praxis_mcp_tool_call_duration_seconds_bucket{cluster="weather-mcp",tool="weather_get_weather",le="0.25"} 3
 praxis_mcp_filter_rejections_total{method="unknown",reason="missing_header"} 1
 ```
