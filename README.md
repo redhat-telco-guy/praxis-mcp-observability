@@ -247,7 +247,7 @@ Remove this filter if you also want the standard Praxis HTTP/filter metrics.
 This is the core contribution. It defines:
 
 - 4 metric constants (`METRIC_MCP_REQUESTS_TOTAL`, etc.)
-- 2 metadata keys for cross-phase state (`META_MCP_REQUEST_START_NS`, `META_MCP_TOOL_NAME`)
+- `McpMetricsState` struct stored in per-instance `filter_state` for cross-phase timing and tool name
 - Cardinality bounding via `ArcSwap<HashSet>` — tool name labels are capped at 512 distinct values, overflow maps to `"other"`
 - 3 recording functions: `record_mcp_request()`, `record_tool_call_completed()`, `record_filter_rejection()`
 - 5 unit tests including a concurrent admission test
@@ -298,7 +298,7 @@ rate(praxis_mcp_requests_total[5m])
 topk(5, sum by (tool) (praxis_mcp_tool_calls_total))
 
 # Tool error rate
-sum by (tool) (rate(praxis_mcp_tool_calls_total{status="error"}[5m]))
+sum by (tool) (rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m]))
 / sum by (tool) (rate(praxis_mcp_tool_calls_total[5m]))
 
 # P95 tool call latency

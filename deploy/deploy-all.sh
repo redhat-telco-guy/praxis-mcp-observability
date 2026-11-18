@@ -614,7 +614,7 @@ spec:
         # Tool call error ratio (0-1 scale)
         - record: mcp:tool_errors:ratio5m
           expr: |
-            sum(rate(praxis_mcp_tool_calls_total{status="error"}[5m]))
+            sum(rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m]))
             /
             clamp_min(sum(rate(praxis_mcp_tool_calls_total[5m])), 1)
 
@@ -716,7 +716,7 @@ spec:
 #   sum by (tool) (rate(praxis_mcp_tool_calls_total[5m]))
 #
 #   # Tool call error rate
-#   sum(rate(praxis_mcp_tool_calls_total{status="error"}[5m]))
+#   sum(rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m]))
 #   / sum(rate(praxis_mcp_tool_calls_total[5m]))
 #
 #   # Average tool call latency (from summary)
@@ -895,7 +895,7 @@ cat > "$_DEPLOY_TMPDIR/grafana-dashboard.json" << 'EOF_GRAFANA'
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(praxis_mcp_tool_calls_total{status=\"error\"}[5m])) / sum(rate(praxis_mcp_tool_calls_total[5m])) * 100",
+          "expr": "sum(rate(praxis_mcp_tool_calls_total{transport_status=\"error\"}[5m])) / sum(rate(praxis_mcp_tool_calls_total[5m])) * 100",
           "legendFormat": "",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
         }
@@ -1456,7 +1456,7 @@ cat > "$_DEPLOY_TMPDIR/grafana-dashboard.json" << 'EOF_GRAFANA'
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (tool) (rate(praxis_mcp_tool_calls_total{status=\"error\"}[5m]))",
+          "expr": "sum by (tool) (rate(praxis_mcp_tool_calls_total{transport_status=\"error\"}[5m]))",
           "legendFormat": "{{tool}}",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
         }
@@ -1987,7 +1987,7 @@ spec:
     <div class="query-card">
       <div class="q">
         <div class="q-label">Error rate by cluster</div>
-        <div class="q-code">sum by (cluster) (rate(praxis_mcp_tool_calls_total{status="error"}[5m])) / sum by (cluster) (rate(praxis_mcp_tool_calls_total[5m]))</div>
+        <div class="q-code">sum by (cluster) (rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m])) / sum by (cluster) (rate(praxis_mcp_tool_calls_total[5m]))</div>
       </div>
       <button class="copy-btn" onclick="copyQ(this)">Copy</button>
     </div>
@@ -2091,7 +2091,7 @@ spec:
 
         - alert: McpToolCallErrorRate
           expr: |
-            sum by (tool) (rate(praxis_mcp_tool_calls_total{status="error"}[5m]))
+            sum by (tool) (rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m]))
             / sum by (tool) (rate(praxis_mcp_tool_calls_total[5m])) > 0.25
           for: 5m
           labels:

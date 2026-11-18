@@ -51,7 +51,7 @@ spec:
         # Tool call error ratio (0-1 scale)
         - record: mcp:tool_errors:ratio5m
           expr: |
-            sum(rate(praxis_mcp_tool_calls_total{status="error"}[5m]))
+            sum(rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m]))
             /
             clamp_min(sum(rate(praxis_mcp_tool_calls_total[5m])), 1)
 
@@ -153,7 +153,7 @@ spec:
 #   sum by (tool) (rate(praxis_mcp_tool_calls_total[5m]))
 #
 #   # Tool call error rate
-#   sum(rate(praxis_mcp_tool_calls_total{status="error"}[5m]))
+#   sum(rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m]))
 #   / sum(rate(praxis_mcp_tool_calls_total[5m]))
 #
 #   # Average tool call latency (from summary)

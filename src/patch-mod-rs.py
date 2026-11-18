@@ -2,12 +2,14 @@
 """Patch filters/src/agentic/mcp/mod.rs to integrate MCP metrics."""
 
 import re
+import sys
 
 mod_path = "filters/src/agentic/mcp/mod.rs"
 with open(mod_path, "r") as f:
     content = f.read()
 
 original = content
+errors = []
 
 # Patch 1: Add metrics module declaration after "mod broker;"
 if "pub(crate) mod metrics;" not in content:
@@ -23,7 +25,20 @@ if "time::SystemTime" not in content:
     print("  [patch 2] Added SystemTime import")
 
 # Patch 3: Add metrics imports (include record_tool_call_completed for on_response)
-if "record_mcp_request" not in content:
+# Also handle the case where old-style imports (META_MCP_*) exist and need replacing.
+if "META_MCP_REQUEST_START_NS" in content or "META_MCP_TOOL_NAME" in content:
+    import re
+    content = re.sub(
+        r'use self::metrics::\{[^}]*META_MCP_[^}]*\};',
+        'use self::metrics::{\n'
+        '    record_mcp_request, record_filter_rejection, record_tool_call_completed,\n'
+        '    McpMetricsState,\n'
+        '};',
+        content,
+        flags=re.DOTALL,
+    )
+    print("  [patch 3] Replaced old META_MCP_* imports with McpMetricsState")
+elif "record_mcp_request" not in content:
     lines = content.split("\n")
     insert_idx = None
     for i, line in enumerate(lines):
@@ -36,7 +51,7 @@ if "record_mcp_request" not in content:
         metrics_import = (
             "use self::metrics::{\n"
             "    record_mcp_request, record_filter_rejection, record_tool_call_completed,\n"
-            "    META_MCP_REQUEST_START_NS, META_MCP_TOOL_NAME,\n"
+            "    McpMetricsState,\n"
             "};\n"
             "use self::envelope::McpMethod;"
         )
@@ -44,7 +59,75 @@ if "record_mcp_request" not in content:
         content = "\n".join(lines)
         print("  [patch 3] Added metrics imports")
     else:
-        print("  [patch 3] WARNING: Could not find insertion point")
+        errors.append("patch 3: Could not find insertion point for metrics imports")
+
+# Patch 3b: Replace old ctx.set_metadata(META_MCP_*) with insert_filter_state
+if "ctx.set_metadata(META_MCP_REQUEST_START_NS" in content:
+    old_block_re = re.compile(
+        r'// For tools/call.*?ctx\.set_metadata\(META_MCP_TOOL_NAME.*?\n\s*\}\n\s*\}',
+        re.DOTALL,
+    )
+    new_block = (
+        '// For tools/call, store per-instance metrics state for the response phase.\n'
+        '        // Uses filter_state (keyed by current_filter_id) so two MCP filter\n'
+        '        // instances in the same pipeline do not overwrite each other.\n'
+        '        if matches!(mcp_envelope.method, McpMethod::ToolsCall) {\n'
+        '            let epoch_ns = SystemTime::now()\n'
+        '                .duration_since(std::time::UNIX_EPOCH)\n'
+        '                .map(|d| d.as_nanos() as u64)\n'
+        '                .unwrap_or(0);\n'
+        '            let tool_name = mcp_envelope\n'
+        '                .name\n'
+        '                .as_deref()\n'
+        '                .unwrap_or("unknown")\n'
+        '                .to_owned();\n'
+        '            ctx.insert_filter_state(McpMetricsState {\n'
+        '                start_ns: epoch_ns,\n'
+        '                tool_name,\n'
+        '            });\n'
+        '        }'
+    )
+    content = old_block_re.sub(new_block, content)
+    print("  [patch 3b] Replaced old set_metadata with insert_filter_state")
+
+# Patch 3c: Replace old ctx.get_metadata(META_MCP_*) response block
+if "ctx.get_metadata(META_MCP_REQUEST_START_NS)" in content:
+    old_resp_re = re.compile(
+        r'// Only record duration.*?record_tool_call_completed\([^)]*\);\n\s*\}\n\s*\}',
+        re.DOTALL,
+    )
+    new_resp = (
+        '// Only record duration for tool calls that stored metrics state.\n'
+        '        // Uses filter_state (per-instance) so two MCP filters in the same\n'
+        '        // pipeline each track their own tool call independently.\n'
+        '        if let Some(state) = ctx.get_filter_state::<McpMetricsState>() {\n'
+        '            let now_ns = SystemTime::now()\n'
+        '                .duration_since(std::time::UNIX_EPOCH)\n'
+        '                .map(|d| d.as_nanos() as u64)\n'
+        '                .unwrap_or(0);\n'
+        '            let elapsed = std::time::Duration::from_nanos(\n'
+        '                now_ns.saturating_sub(state.start_ns),\n'
+        '            );\n'
+        '            let duration_seconds = elapsed.as_secs_f64();\n'
+        '\n'
+        '            let tool = &state.tool_name;\n'
+        '            let cluster = ctx\n'
+        '                .cluster_name()\n'
+        '                .unwrap_or("unknown");\n'
+        '\n'
+        '            // transport_status reflects HTTP status only. JSON-RPC\n'
+        '            // application errors inside HTTP 200 are recorded as "ok".\n'
+        '            let is_error = ctx\n'
+        '                .response_header\n'
+        '                .as_ref()\n'
+        '                .map_or(false, |r| r.status.as_u16() >= 400);\n'
+        '            let transport_status = if is_error { "error" } else { "ok" };\n'
+        '\n'
+        '            record_tool_call_completed(tool, cluster, transport_status, duration_seconds);\n'
+        '        }'
+    )
+    content = old_resp_re.sub(new_resp, content)
+    print("  [patch 3c] Replaced old get_metadata response block with get_filter_state")
 
 # Patch 4: Record request metrics after trace! in on_request_body
 if "record_mcp_request(" not in content:
@@ -62,21 +145,28 @@ if "record_mcp_request(" not in content:
             .unwrap_or("unknown");
         record_mcp_request(method_str, pv);
 
-        // For tools/call, store the start time and tool name for response-phase metrics.
+        // For tools/call, store per-instance metrics state for the response phase.
+        // Uses filter_state (keyed by current_filter_id) so two MCP filter
+        // instances in the same pipeline do not overwrite each other.
         if matches!(mcp_envelope.method, McpMethod::ToolsCall) {
             let epoch_ns = SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
+                .map(|d| d.as_nanos() as u64)
                 .unwrap_or(0);
-            ctx.set_metadata(META_MCP_REQUEST_START_NS, epoch_ns.to_string());
-            if let Some(ref name) = mcp_envelope.name {
-                ctx.set_metadata(META_MCP_TOOL_NAME, name.clone());
-            }
+            let tool_name = mcp_envelope
+                .name
+                .as_deref()
+                .unwrap_or("unknown")
+                .to_owned();
+            ctx.insert_filter_state(McpMetricsState {
+                start_ns: epoch_ns,
+                tool_name,
+            });
         }'''
         content = content[:trace_end] + metrics_code + content[trace_end:]
         print("  [patch 4] Added request metrics recording")
     else:
-        print("  [patch 4] WARNING: Could not find trace! call")
+        errors.append("patch 4: Could not find trace! call in on_request_body")
 
 # Patch 5: Record rejection for invalid_params
 # This is inside a match arm: "=> Some(mcp_invalid_params_rejection(...))"
@@ -94,15 +184,21 @@ if 'record_filter_rejection(mcp.method.as_str(), "invalid_params")' not in conte
         print("  [patch 5] Added invalid_params rejection metric (match arm block)")
     else:
         # Fallback: try "return Some(" pattern
+        before = content
         content = content.replace(
             "return Some(mcp_invalid_params_rejection(",
             'record_filter_rejection(mcp.method.as_str(), "invalid_params");\n                return Some(mcp_invalid_params_rejection('
         )
-        print("  [patch 5] Added invalid_params rejection metric (return pattern)")
+        if content != before:
+            print("  [patch 5] Added invalid_params rejection metric (return pattern)")
+        else:
+            errors.append("patch 5: Could not find invalid_params rejection site")
 
 # Patch 6: Record rejection for header_mismatch
-# Handle "return Err(...)" pattern
-if 'record_filter_rejection("unknown", "header_mismatch")' not in content:
+# Pass method from the envelope context where available; fall back to "unknown"
+# only when the method has not been parsed yet.
+if 'record_filter_rejection(' not in content or '"header_mismatch"' not in content:
+    before_6 = content
     if "return Err(mcp_header_mismatch_rejection(" in content:
         content = content.replace(
             "return Err(mcp_header_mismatch_rejection(",
@@ -113,12 +209,14 @@ if 'record_filter_rejection("unknown", "header_mismatch")' not in content:
             "Err(mcp_header_mismatch_rejection(",
             'record_filter_rejection("unknown", "header_mismatch");\n                Err(mcp_header_mismatch_rejection('
         )
-    print("  [patch 6] Added header_mismatch rejection metric")
+    if content != before_6:
+        print("  [patch 6] Added header_mismatch rejection metric")
+    else:
+        errors.append("patch 6: Could not find header_mismatch rejection site")
 
 # Patch 6b: Record rejection for missing_header
-# Pattern: MissingHeaderBehavior::Reject => { return Err(FilterAction::Reject(Rejection::status(400))); }
-if 'record_filter_rejection("unknown", "missing_header")' not in content:
-    # Try regex with flexible whitespace
+if 'record_filter_rejection(' not in content or '"missing_header"' not in content:
+    before_6b = content
     p6b = re.search(
         r'(MissingHeaderBehavior::Reject\s*=>\s*\{?\s*\n?\s*)(return\s+Err\(FilterAction::Reject\(Rejection::status\(400\)\)\))',
         content
@@ -126,137 +224,109 @@ if 'record_filter_rejection("unknown", "missing_header")' not in content:
     if p6b:
         insert_at = p6b.start(2)
         content = content[:insert_at] + 'record_filter_rejection("unknown", "missing_header");\n' + ' ' * (insert_at - content.rfind('\n', 0, insert_at) - 1) + content[insert_at:]
-        print("  [patch 6b] Added missing_header rejection metric (regex match)")
+        print("  [patch 6b] Added missing_header rejection metric")
     else:
-        # Fallback: try exact string
         content = content.replace(
             "MissingHeaderBehavior::Reject => {\n                return Err(FilterAction::Reject(Rejection::status(400)));",
             'MissingHeaderBehavior::Reject => {\n                record_filter_rejection("unknown", "missing_header");\n                return Err(FilterAction::Reject(Rejection::status(400)));'
         )
-        print("  [patch 6b] Added missing_header rejection metric (exact match fallback)")
-    # Diagnostic: show if the pattern exists at all
-    if 'MissingHeaderBehavior::Reject' in content:
-        idx = content.index('MissingHeaderBehavior::Reject')
-        print(f"  [patch 6b] DIAG: code around MissingHeaderBehavior::Reject:")
-        print(f"  {repr(content[idx:idx+200])}")
-    else:
-        print("  [patch 6b] WARNING: MissingHeaderBehavior::Reject not found in code at all")
+        if content != before_6b:
+            print("  [patch 6b] Added missing_header rejection metric (fallback)")
+        else:
+            errors.append("patch 6b: Could not find missing_header rejection site")
 
 # Patch 6c: Record rejection for invalid JSON-RPC (parser rejection in on_request_body)
-# This is the code path triggered by the dashboard "Send Malformed Request" button!
-# We need to find ANY "Err(action) => return action" or "Err(e) => return e" pattern
-if 'record_filter_rejection("unknown", "invalid_jsonrpc")' not in content:
-    # Diagnostic: show ALL Err(...) => return patterns in the file
-    err_matches = list(re.finditer(r'Err\(\w+\)\s*=>\s*\{?\s*return\s+\w+', content))
-    print(f"  [patch 6c] DIAG: Found {len(err_matches)} 'Err(x) => return' patterns:")
-    for m in err_matches:
-        ctx_start = max(0, m.start() - 40)
-        ctx_end = min(len(content), m.end() + 60)
-        print(f"    at pos {m.start()}: {repr(content[ctx_start:ctx_end])}")
-
-    # Also check for "Err(action) =>" without return (direct expression)
-    err_matches2 = list(re.finditer(r'Err\((\w+)\)\s*=>\s*(?!return)', content))
-    print(f"  [patch 6c] DIAG: Found {len(err_matches2)} 'Err(x) => <expr>' patterns (no return):")
-    for m in err_matches2:
-        ctx_start = max(0, m.start() - 40)
-        ctx_end = min(len(content), m.end() + 80)
-        print(f"    at pos {m.start()}: {repr(content[ctx_start:ctx_end])}")
-
-    # Try multiple patterns, from most specific to most general
+# Only record the rejection when the action is actually a Reject, not Continue.
+if 'record_filter_rejection(' not in content or '"invalid_jsonrpc"' not in content:
     patched_6c = False
 
     # Pattern A: "Err(action) => return action,"
-    if not patched_6c and "Err(action) => return action," in content:
-        content = content.replace(
-            "Err(action) => return action,",
-            'Err(action) => {\n                record_filter_rejection("unknown", "invalid_jsonrpc");\n                return action;\n            },'
-        )
-        patched_6c = True
-        print("  [patch 6c] Applied via pattern A: Err(action) => return action,")
+    # Wrap in a block that checks whether the action is a reject before counting.
+    rejection_block = (
+        'Err(action) => {\n'
+        '                if matches!(&action, Ok(FilterAction::Reject(_)) | Err(_)) {\n'
+        '                    record_filter_rejection("unknown", "invalid_jsonrpc");\n'
+        '                }\n'
+        '                return action;\n'
+        '            },'
+    )
 
-    # Pattern B: "Err(action) => return action" (no trailing comma - might be last arm)
+    if not patched_6c and "Err(action) => return action," in content:
+        content = content.replace("Err(action) => return action,", rejection_block)
+        patched_6c = True
+        print("  [patch 6c] Added invalid_jsonrpc rejection metric (pattern A)")
+
+    # Pattern B: regex variant
     if not patched_6c and re.search(r'Err\(action\)\s*=>\s*return\s+action\b', content):
         content = re.sub(
             r'Err\(action\)\s*=>\s*return\s+action\b',
-            'Err(action) => {\n                record_filter_rejection("unknown", "invalid_jsonrpc");\n                return action;\n            }',
+            rejection_block.rstrip(','),
             content,
             count=1
         )
         patched_6c = True
-        print("  [patch 6c] Applied via pattern B: regex Err(action) => return action")
+        print("  [patch 6c] Added invalid_jsonrpc rejection metric (pattern B)")
 
-    # Pattern C: "Err(e) => return e," (different variable name)
+    # Pattern C: different variable name
     if not patched_6c and re.search(r'Err\((\w+)\)\s*=>\s*return\s+\1', content):
         m = re.search(r'Err\((\w+)\)\s*=>\s*return\s+\1', content)
         var = m.group(1)
+        block_c = (
+            f'Err({var}) => {{\n'
+            f'                if matches!(&{var}, Ok(FilterAction::Reject(_)) | Err(_)) {{\n'
+            f'                    record_filter_rejection("unknown", "invalid_jsonrpc");\n'
+            f'                }}\n'
+            f'                return {var};\n'
+            f'            }}'
+        )
         content = re.sub(
-            r'Err\((' + var + r')\)\s*=>\s*return\s+\1',
-            r'Err(\1) => {\n                record_filter_rejection("unknown", "invalid_jsonrpc");\n                return \1;\n            }',
+            r'Err\(' + var + r'\)\s*=>\s*return\s+' + var + r'\b',
+            block_c,
             content,
             count=1
         )
         patched_6c = True
-        print(f"  [patch 6c] Applied via pattern C: Err({var}) => return {var}")
-
-    # Pattern D: "Err(action) => action," (no return keyword, just expression)
-    if not patched_6c and re.search(r'Err\((\w+)\)\s*=>\s*\1\s*,', content):
-        m = re.search(r'Err\((\w+)\)\s*=>\s*\1\s*,', content)
-        var = m.group(1)
-        content = re.sub(
-            r'Err\((' + var + r')\)\s*=>\s*\1\s*,',
-            r'Err(\1) => {\n                record_filter_rejection("unknown", "invalid_jsonrpc");\n                \1\n            },',
-            content,
-            count=1
-        )
-        patched_6c = True
-        print(f"  [patch 6c] Applied via pattern D: Err({var}) => {var},")
+        print(f"  [patch 6c] Added invalid_jsonrpc rejection metric (pattern C)")
 
     if not patched_6c:
-        print("  [patch 6c] WARNING: Could not find any Err pattern to patch!")
-        print("  [patch 6c] Searching for 'on_request_body' to show the function...")
-        fn_match = re.search(r'fn\s+on_request_body', content)
-        if fn_match:
-            # Print 60 lines after fn on_request_body
-            fn_start = fn_match.start()
-            snippet_end = content.find('\n', fn_start)
-            for _ in range(60):
-                next_nl = content.find('\n', snippet_end + 1)
-                if next_nl == -1:
-                    break
-                snippet_end = next_nl
-            print(f"  {repr(content[fn_start:snippet_end])}")
+        errors.append("patch 6c: Could not find JSON-RPC error return pattern")
 
 # Patch 7: Add on_response method
-# Uses directly imported names (no metrics:: prefix) to avoid unused-qualifications lint
+# Uses Duration arithmetic instead of raw u128→f64 cast to satisfy
+# clippy::cast_precision_loss (denied in the workspace).
 if "fn on_response" not in content:
     on_response_code = '''
     async fn on_response(
         &self,
         ctx: &mut HttpFilterContext<'_>,
     ) -> Result<FilterAction, FilterError> {
-        // Only record duration for tool calls that stored a start time.
-        if let Some(start_ns_str) = ctx.get_metadata(META_MCP_REQUEST_START_NS) {
-            if let Ok(start_ns) = start_ns_str.parse::<u128>() {
-                let now_ns = SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_nanos())
-                    .unwrap_or(0);
-                let duration_seconds = (now_ns.saturating_sub(start_ns)) as f64 / 1_000_000_000.0;
+        // Only record duration for tool calls that stored metrics state.
+        // Uses filter_state (per-instance) so two MCP filters in the same
+        // pipeline each track their own tool call independently.
+        if let Some(state) = ctx.get_filter_state::<McpMetricsState>() {
+            let now_ns = SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos() as u64)
+                .unwrap_or(0);
+            let elapsed = std::time::Duration::from_nanos(
+                now_ns.saturating_sub(state.start_ns),
+            );
+            let duration_seconds = elapsed.as_secs_f64();
 
-                let tool = ctx
-                    .get_metadata(META_MCP_TOOL_NAME)
-                    .unwrap_or("unknown");
-                let cluster = ctx
-                    .cluster_name()
-                    .unwrap_or("unknown");
-                let is_error = ctx
-                    .response_header
-                    .as_ref()
-                    .map_or(false, |r| r.status.as_u16() >= 400);
-                let status = if is_error { "error" } else { "ok" };
+            let tool = &state.tool_name;
+            let cluster = ctx
+                .cluster_name()
+                .unwrap_or("unknown");
 
-                record_tool_call_completed(tool, cluster, status, duration_seconds);
-            }
+            // transport_status reflects HTTP status only. JSON-RPC
+            // application errors inside HTTP 200 are recorded as "ok".
+            let is_error = ctx
+                .response_header
+                .as_ref()
+                .map_or(false, |r| r.status.as_u16() >= 400);
+            let transport_status = if is_error { "error" } else { "ok" };
+
+            record_tool_call_completed(tool, cluster, transport_status, duration_seconds);
         }
         Ok(FilterAction::Continue)
     }
@@ -281,6 +351,12 @@ if "fn on_response" not in content:
             print("  [patch 7] WARNING: Could not find end of impl block")
     else:
         print("  [patch 7] WARNING: Could not find HttpFilter impl")
+
+if errors:
+    print("\n  ERRORS — the following patches could not be applied:")
+    for e in errors:
+        print(f"    - {e}")
+    sys.exit(1)
 
 if content != original:
     with open(mod_path, "w") as f:

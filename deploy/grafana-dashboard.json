@@ -163,7 +163,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(praxis_mcp_tool_calls_total{status=\"error\"}[5m])) / sum(rate(praxis_mcp_tool_calls_total[5m])) * 100",
+          "expr": "sum(rate(praxis_mcp_tool_calls_total{transport_status=\"error\"}[5m])) / sum(rate(praxis_mcp_tool_calls_total[5m])) * 100",
           "legendFormat": "",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
         }
@@ -694,7 +694,7 @@
     {
       "id": 12,
       "title": "Tool Errors by Tool",
-      "description": "Rate of tool calls returning error status, per tool name.",
+      "description": "Rate of tool calls returning HTTP transport error, per tool name.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 33 },
@@ -724,7 +724,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (tool) (rate(praxis_mcp_tool_calls_total{status=\"error\"}[5m]))",
+          "expr": "sum by (tool) (rate(praxis_mcp_tool_calls_total{transport_status=\"error\"}[5m]))",
           "legendFormat": "{{tool}}",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
         }

@@ -15,6 +15,7 @@ Without MCP metrics, you're flying blind:
 | Question | Before | After |
 |----------|--------|-------|
 | "Which tools are my agents calling?" | No idea — you see HTTP 200s but not tool names | `sum by (tool) (praxis_mcp_tool_calls_total)` |
+| "Is the MCP backend reachable?" | Check pod logs manually | `sum by (cluster) (rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m]))` |
 | "Why is my agent slow?" | Could be LLM or tool backend — can't tell | `histogram_quantile(0.99, rate(praxis_mcp_tool_call_duration_seconds_bucket[5m]))` |
 | "Is someone sending garbage?" | Filter rejects silently — nobody knows | `sum by (reason) (rate(praxis_mcp_filter_rejections_total[5m]))` |
 | "What's my MCP request rate?" | Guess from HTTP access logs | `rate(praxis_mcp_requests_total[5m])` |
@@ -26,7 +27,7 @@ Without MCP metrics, you're flying blind:
 | Metric | Type | Labels | What it tells you |
 |--------|------|--------|-------------------|
 | `praxis_mcp_requests_total` | Counter | `method`, `protocol_version` | MCP requests by method (`tools/call`, `tools/list`, `initialize`, etc.) |
-| `praxis_mcp_tool_calls_total` | Counter | `tool`, `cluster`, `status` | Per-tool call counts with success/failure |
+| `praxis_mcp_tool_calls_total` | Counter | `tool`, `cluster`, `transport_status` | Per-tool call counts with HTTP transport outcome (ok/error) |
 | `praxis_mcp_tool_call_duration_seconds` | Summary | `tool`, `cluster` | Upstream round-trip latency per tool |
 | `praxis_mcp_filter_rejections_total` | Counter | `method`, `reason` | Requests rejected by the filter |
 
@@ -171,13 +172,13 @@ praxis_mcp_requests_total{method="tools/list",protocol_version="unknown"} 6
 praxis_mcp_requests_total{method="tools/call",protocol_version="2025-11-25"} 30
 
 # TYPE praxis_mcp_tool_calls_total counter
-praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",status="ok"} 14
-praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",status="ok"} 3
+praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",transport_status="ok"} 14
+praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",transport_status="ok"} 3
 
 # TYPE praxis_mcp_filter_rejections_total counter
 praxis_mcp_filter_rejections_total{method="tools/call",reason="invalid_params"} 9
@@ -218,13 +219,13 @@ praxis_mcp_tool_calls_total
 ```
 
 ```
-praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",status="ok"} 14
-praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",status="ok"} 3
+praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",transport_status="ok"} 14
+praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",transport_status="ok"} 3
 ```
 
 ### Verify ServiceMonitor is working
@@ -238,19 +239,25 @@ oc get endpoints -n praxis-mcp-test praxis-ai-metrics
 
 ## Implementation details
 
-### Source file: `src/metrics.rs` (411 lines)
+### Source file: `src/metrics.rs`
 
 ```rust
-// 4 metrics with cardinality bounding
-static MCP_REQUESTS: LazyLock<IntCounterVec> = ...
-static MCP_TOOL_CALLS: LazyLock<IntCounterVec> = ...
-static MCP_TOOL_DURATION: LazyLock<HistogramVec> = ...
-static MCP_REJECTIONS: LazyLock<IntCounterVec> = ...
+// 4 metric constants
+pub const METRIC_MCP_REQUESTS_TOTAL: &str = "praxis_mcp_requests_total";
+pub const METRIC_MCP_TOOL_CALLS_TOTAL: &str = "praxis_mcp_tool_calls_total";
+pub const METRIC_MCP_TOOL_CALL_DURATION: &str = "praxis_mcp_tool_call_duration_seconds";
+pub const METRIC_MCP_FILTER_REJECTIONS_TOTAL: &str = "praxis_mcp_filter_rejections_total";
+
+// Per-instance state for cross-phase metrics (stored in filter_state)
+pub(crate) struct McpMetricsState {
+    pub start_ns: u64,
+    pub tool_name: String,
+}
 
 // 3 recording functions called from mod.rs
-pub(crate) fn record_mcp_request(method: &str, protocol_version: Option<&str>) { ... }
-pub(crate) fn record_tool_call_completed(tool: &str, cluster: &str, status: u16, duration: Duration) { ... }
-pub(crate) fn record_filter_rejection(method: &str, reason: &str) { ... }
+pub fn record_mcp_request(method: &str, protocol_version: &str) { ... }
+pub fn record_tool_call_completed(tool: &str, cluster: &str, transport_status: &str, duration_seconds: f64) { ... }
+pub fn record_filter_rejection(method: &str, reason: &str) { ... }
 ```
 
 ### Design decisions
@@ -258,8 +265,12 @@ pub(crate) fn record_filter_rejection(method: &str, reason: &str) { ... }
 - **Follows existing Praxis patterns** — same cardinality bounding approach as `llm_metrics.rs`, same label conventions, same test style
 - **No new dependencies** — uses `prometheus` crate already in `Cargo.toml`
 - **Tool name capped at 64 chars** — prevents cardinality explosion from malicious inputs
-- **Status mapped to `ok`/`error`** — not raw HTTP codes, to keep cardinality bounded
-- **Build-time patching** — `patch-mod-rs.py` wires metrics into `mod.rs` without forking Praxis
+- **Per-instance `filter_state`** — cross-phase timing and tool name stored in a typed `McpMetricsState` struct via `ctx.insert_filter_state()` / `ctx.get_filter_state()`, keyed by `current_filter_id`. Two MCP filter instances in the same pipeline each track their own tool call independently — no shared metadata collisions.
+- **`transport_status` label (not `status`)** — the `praxis_mcp_tool_calls_total` counter labels HTTP transport outcome as `"ok"` (2xx/3xx) or `"error"` (4xx/5xx). It does **not** reflect JSON-RPC application-level success: a tool returning `{"error": ...}` inside HTTP 200 is recorded as `transport_status="ok"`. Detecting application-level errors would require response body parsing, which is out of scope for this transport-level metric and can be added in a follow-up.
+- **Method and protocol_version allowlisted** — unknown methods map to `"other"`, unrecognized protocol versions map to `"unknown"`, preventing unbounded cardinality from client-controlled values
+- **Rejection reasons allowlisted** — `invalid_params`, `header_mismatch`, `missing_header`, `body_too_large`, `invalid_jsonrpc`; anything else maps to `"other"`
+- **`invalid_jsonrpc` counted only on actual rejection** — when `on_invalid` is set to `Continue`, non-JSON-RPC requests pass through without inflating the rejection counter
+- **Build-time patching** — `patch-mod-rs.py` wires metrics into `mod.rs` without forking Praxis; exits non-zero if any patch anchor is missing
 
 ---
 
@@ -278,6 +289,22 @@ pub(crate) fn record_filter_rejection(method: &str, reason: &str) { ... }
 | `diagnostics/check-metrics.sh` | ~100 | 8-layer end-to-end checker |
 | `test/mock-mcp-server.py` | ~50 | Standalone mock for local testing |
 | `test/simulate-traffic.sh` | ~40 | Traffic generator |
+
+---
+
+## Review feedback addressed
+
+### Shared metadata keys → per-instance `filter_state` ([@tsisodia10](https://github.com/tsisodia10))
+
+Previously, cross-phase state (request start time and tool name) was stored in shared `filter_metadata` using fixed string keys. If two MCP filter instances existed in the same pipeline, the second would overwrite the first's data.
+
+**Fix:** Replaced with a typed `McpMetricsState` struct stored in `filter_state` via `ctx.insert_filter_state()` / `ctx.get_filter_state::<McpMetricsState>()`. This is keyed by `current_filter_id`, so each filter instance tracks its own tool call independently. This follows the same pattern used by the guardrails, metering, token counting, A2A, and inflight filters.
+
+### HTTP status ≠ tool success → `transport_status` label ([@tsisodia10](https://github.com/tsisodia10))
+
+Previously, the `status` label on `praxis_mcp_tool_calls_total` was derived from HTTP status code (>= 400 → error). JSON-RPC application errors normally arrive in HTTP 200 with an `{"error": ...}` object, so those would be recorded as `status="ok"`, under-reporting failures.
+
+**Fix:** Renamed the label to `transport_status` and documented that it reflects HTTP transport outcome only. A tool returning a JSON-RPC error inside HTTP 200 is recorded as `transport_status="ok"`. This is intentional — detecting application-level errors requires response body parsing, which is a separate concern and can be added in a follow-up. The label name makes the limitation explicit so dashboard builders don't treat it as the tool result.
 
 ---
 

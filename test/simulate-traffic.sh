@@ -205,6 +205,6 @@ fi
 echo ""
 echo "── Useful PromQL queries for Grafana ──"
 echo '  rate(praxis_mcp_requests_total[5m])                    # Request rate by method'
-echo '  rate(praxis_mcp_tool_calls_total{status="error"}[5m])  # Error rate'
+echo '  rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m])  # Error rate'
 echo '  histogram_quantile(0.99, rate(praxis_mcp_tool_call_duration_seconds_bucket[5m]))  # p99 latency'
 echo '  topk(10, rate(praxis_mcp_tool_calls_total[5m]))        # Top tools by call rate'
