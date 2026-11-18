@@ -207,14 +207,7 @@ METRICS_RESPONSE = '''
         // Uses filter_state (per-instance) so two MCP filters in the same
         // pipeline each track their own tool call independently.
         if let Some(state) = ctx.get_filter_state::<McpMetricsState>() {
-            let now_ns = SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos() as u64)
-                .unwrap_or(0);
-            let elapsed = std::time::Duration::from_nanos(
-                now_ns.saturating_sub(state.start_ns),
-            );
-            let duration_seconds = elapsed.as_secs_f64();
+            let duration_seconds = state.start.elapsed().as_secs_f64();
 
             let tool = &state.tool_name;
             let cluster = ctx
@@ -392,7 +385,7 @@ else
   warn "  oc apply -f deploy/cluster-log-forwarder.yaml"
 fi
 
-# ── 7a. Apply Prometheus alerting rules ────────────────────────────────────
+# ── 7. Apply Prometheus alerting rules ─────────────────────────────────────
 step "Applying Prometheus alerting rules"
 if [[ -f "$SCRIPT_DIR/deploy/prometheus-alerts.yaml" ]]; then
   oc apply -f "$SCRIPT_DIR/deploy/prometheus-alerts.yaml" -n "$PROJECT"
@@ -404,147 +397,7 @@ else
   warn "deploy/prometheus-alerts.yaml not found — skipping"
 fi
 
-# ── 7b. Set up ACS SecuredCluster + import policies ────────────────────────
-step "Setting up ACS (StackRox) for Praxis security monitoring"
-if oc get ns stackrox &>/dev/null; then
-  ACS_ROUTE=$(oc get route central -n stackrox -o jsonpath='{.spec.host}' 2>/dev/null || true)
-  if [[ -n "$ACS_ROUTE" ]]; then
-    ACS_URL="https://$ACS_ROUTE"
-    ACS_PASS=$(oc get secret central-htpasswd -n stackrox -o jsonpath='{.data.password}' | base64 -d 2>/dev/null || true)
-    ok "ACS Central: $ACS_URL"
-
-    # Check if SecuredCluster needs init bundle
-    SC_STATUS=$(oc get securedcluster -n stackrox -o jsonpath='{.items[0].status.conditions[?(@.type=="Irreconcilable")].status}' 2>/dev/null || echo "")
-    if [[ "$SC_STATUS" == "True" ]]; then
-      echo "  SecuredCluster missing init bundle — generating..."
-      BUNDLE_RESP=$(curl -sk -u "admin:${ACS_PASS}" \
-        "${ACS_URL}/v1/cluster-init/init-bundles" \
-        -X POST -H "Content-Type: application/json" \
-        -d "{\"name\":\"praxis-$(date +%s)\"}" 2>/dev/null)
-
-      BUNDLE_YAML=$(echo "$BUNDLE_RESP" | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    print(data.get('kubectlBundle', ''))
-except: pass
-" 2>/dev/null)
-
-      if [[ -n "$BUNDLE_YAML" && "$BUNDLE_YAML" != "" ]]; then
-        echo "$BUNDLE_YAML" | oc apply -n stackrox -f -
-        ok "Init bundle applied — sensor should start within 60s"
-        echo "  Waiting for sensor to come up..."
-        for i in $(seq 1 12); do
-          SENSOR_READY=$(oc get pods -n stackrox -l app=sensor -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
-          if [[ "$SENSOR_READY" == "Running" ]]; then
-            ok "Sensor is running"
-            break
-          fi
-          sleep 10
-        done
-      else
-        warn "Could not generate init bundle — check ACS Central credentials"
-      fi
-    else
-      ok "SecuredCluster init bundle already present"
-    fi
-
-    # Import policies via REST API (authenticated)
-    if [[ -n "$ACS_PASS" ]]; then
-      echo "  Importing MCP security policies..."
-      POLICY_FILE="$SCRIPT_DIR/deploy/acs-runtime-policy.json"
-      IMPORT_RESP=$(curl -sk -u "admin:${ACS_PASS}" \
-        -X POST "${ACS_URL}/v1/policies/import" \
-        -H "Content-Type: application/json" \
-        -d @"$POLICY_FILE" 2>/dev/null)
-
-      # Check if any policies were imported (look for "succeeded" or "allSucceeded")
-      if echo "$IMPORT_RESP" | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    responses = data.get('responses', [])
-    succeeded = sum(1 for r in responses if r.get('succeeded', False))
-    already = sum(1 for r in responses if 'already exists' in str(r.get('errors', {}).get('errors', [])))
-    if succeeded > 0:
-        print(f'Imported {succeeded} new policies')
-        sys.exit(0)
-    elif already > 0:
-        print(f'{already} policies already exist')
-        sys.exit(0)
-    else:
-        print('Import failed: ' + json.dumps(data)[:200])
-        sys.exit(1)
-except Exception as e:
-    print(f'Parse error: {e}')
-    sys.exit(1)
-" 2>/dev/null; then
-        ok "ACS policies imported"
-      else
-        warn "ACS policy import had issues — check ACS UI → Policy Management"
-      fi
-
-      # List active MCP policies
-      echo "  Active ACS policies for Praxis:"
-      curl -sk -u "admin:${ACS_PASS}" "${ACS_URL}/v1/policies" 2>/dev/null \
-        | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    for p in data.get('policies', []):
-        if 'Praxis' in p.get('name', '') or 'MCP' in p.get('name', ''):
-            status = 'enabled' if not p.get('disabled', False) else 'disabled'
-            print(f\"    - {p['name']} [{status}]\")
-except: pass
-" 2>/dev/null
-    else
-      warn "Could not read ACS admin password — import policies manually"
-      warn "  ACS UI → Platform Configuration → Policy Management → Import"
-      warn "  File: $SCRIPT_DIR/deploy/acs-runtime-policy.json"
-    fi
-  else
-    warn "ACS Central route not found"
-  fi
-else
-  warn "stackrox namespace not found — skipping ACS setup"
-fi
-
-# ── 8. Apply ACM fleet policy ──────────────────────────────────────────────
-step "Applying ACM fleet audit policy (open-cluster-management)"
-if oc get ns open-cluster-management &>/dev/null; then
-  oc apply -f "$SCRIPT_DIR/deploy/acm-audit-policy.yaml"
-  ok "ACM audit policy applied"
-
-  # Label the local managed cluster so the policy targets it
-  LOCAL_CLUSTER=$(oc get managedclusters -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-  if [[ -n "$LOCAL_CLUSTER" ]]; then
-    if oc get managedcluster "$LOCAL_CLUSTER" -o jsonpath='{.metadata.labels.praxis}' 2>/dev/null | grep -q "enabled"; then
-      ok "Managed cluster '$LOCAL_CLUSTER' already labelled praxis=enabled"
-    else
-      oc label managedcluster "$LOCAL_CLUSTER" praxis=enabled --overwrite
-      ok "Labelled managed cluster '$LOCAL_CLUSTER' with praxis=enabled"
-    fi
-  else
-    warn "No managed clusters found — label manually when ready:"
-    warn "  oc label managedcluster <name> praxis=enabled"
-  fi
-
-  # Check compliance (non-blocking)
-  sleep 5
-  COMPLIANCE=$(oc get policy praxis-mcp-audit-policy -n open-cluster-management \
-    -o jsonpath='{.status.compliant}' 2>/dev/null || echo "unknown")
-  if [[ "$COMPLIANCE" == "Compliant" ]]; then
-    ok "ACM policy status: Compliant"
-  else
-    warn "ACM policy status: $COMPLIANCE (may take a few minutes to evaluate)"
-  fi
-else
-  warn "open-cluster-management namespace not found — skipping ACM policy"
-  warn "Apply from ACM hub cluster when ready:"
-  warn "  oc apply -f $SCRIPT_DIR/deploy/acm-audit-policy.yaml -n open-cluster-management"
-fi
-
-# ── 9. Run verification ─────────────────────────────────────────────────────
+# ── 8. Run verification ─────────────────────────────────────────────────────
 step "Running verification"
 
 # If Logging + Loki are available and user didn't explicitly set SKIP_LOKI,
@@ -565,7 +418,7 @@ fi
 chmod +x "$SCRIPT_DIR/test/verify-audit-logs.sh"
 PROJECT="$PROJECT" SKIP_LOKI="$SKIP_LOKI" bash "$SCRIPT_DIR/test/verify-audit-logs.sh"
 
-# ── 10. Dashboard ───────────────────────────────────────────────────────────
+# ── 9. Dashboard ───────────────────────────────────────────────────────────
 step "Deploying MCP Audit Dashboard"
 oc create configmap mcp-audit-dashboard \
   --from-file=index.html="$SCRIPT_DIR/dashboard/dashboard.html" \
@@ -582,7 +435,7 @@ else
   warn "Dashboard deployed but route not yet ready"
 fi
 
-# ── 10b. Enable OCP Console log viewer (Observe → Logs) ─────────────────────
+# ── 9b. Enable OCP Console log viewer (Observe → Logs) ─────────────────────
 step "Enabling OCP Console log viewer"
 if oc get lokistack logging-loki -n openshift-logging &>/dev/null; then
   # Try UIPlugin v1alpha1 first, then v1, then ConsolePlugin fallback
@@ -625,7 +478,7 @@ else
   warn "LokiStack not found — skipping console log viewer"
 fi
 
-# ── 10c. Raise LokiStack per-tenant query concurrency ───────────────────────
+# ── 9c. Raise LokiStack per-tenant query concurrency ───────────────────────
 step "Tuning LokiStack query concurrency for dashboard use"
 if oc get lokistack logging-loki -n openshift-logging &>/dev/null; then
   # Default maxConcurrentQueriesPerTenant is too low for Grafana dashboards
@@ -642,7 +495,7 @@ else
   warn "LokiStack not found — skipping concurrency tuning"
 fi
 
-# ── 11. Grafana with Loki datasource and audit dashboard ────────────────────
+# ── 10. Grafana with Loki datasource and audit dashboard ────────────────────
 step "Deploying Grafana with MCP Audit Dashboard"
 if oc get lokistack logging-loki -n openshift-logging &>/dev/null; then
 
@@ -869,20 +722,16 @@ else
   warn "Install OpenShift Logging + LokiStack first, then re-run"
 fi
 
-# ── 12. Summary ─────────────────────────────────────────────────────────────
+# ── 11. Summary ─────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}=== Praxis MCP Audit Logging — Install Complete ===${NC}"
 echo ""
 echo "  Audit events:  mcp.call.completed / rejected / initiated → pod stdout"
 echo "  Log pipeline:  ClusterLogForwarder → LokiStack (openshift-logging)"
-echo "  ACS policies:  MCP anomaly detection (excessive calls, off-hours, high errors)"
-echo "  ACM policy:    Fleet-wide audit logging enforcement"
+echo "  Alerts:        5 Prometheus alert rules (McpExcessiveToolCalls, etc.)"
 [[ -n "${DASH_URL:-}" ]] && echo "  Dashboard:     https://$DASH_URL"
 [[ -n "${GRAFANA_URL:-}" ]] && echo "  Grafana:       https://$GRAFANA_URL  (admin / praxis-audit)"
 [[ -n "${GRAFANA_URL:-}" ]] && echo "  Audit board:   https://$GRAFANA_URL/d/praxis-mcp-audit"
-echo ""
-echo "  File the upstream GitHub issue:"
-echo "    $SCRIPT_DIR/upstream-pr/AUDIT_GITHUB_ISSUE.md"
 echo ""
 echo "  Re-run verification anytime:"
 echo "    PROJECT=$PROJECT bash $SCRIPT_DIR/test/verify-audit-logs.sh"
