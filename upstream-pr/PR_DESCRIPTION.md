@@ -26,7 +26,7 @@ Without MCP metrics, you're flying blind:
 | Metric | Type | Labels | What it tells you |
 |--------|------|--------|-------------------|
 | `praxis_mcp_requests_total` | Counter | `method`, `protocol_version` | MCP requests by method (`tools/call`, `tools/list`, `initialize`, etc.) |
-| `praxis_mcp_tool_calls_total` | Counter | `tool`, `cluster`, `status` | Per-tool call counts with success/failure |
+| `praxis_mcp_tool_calls_total` | Counter | `tool`, `cluster`, `transport_status` | Per-tool call counts with HTTP transport outcome |
 | `praxis_mcp_tool_call_duration_seconds` | Summary | `tool`, `cluster` | Upstream round-trip latency per tool |
 | `praxis_mcp_filter_rejections_total` | Counter | `method`, `reason` | Requests rejected by the filter |
 
@@ -238,27 +238,30 @@ oc get endpoints -n praxis-mcp-test praxis-ai-metrics
 
 ## Implementation details
 
-### Source file: `src/metrics.rs` (411 lines)
+### Source file: `src/metrics.rs` (~490 lines)
 
 ```rust
-// 4 metrics with cardinality bounding
-static MCP_REQUESTS: LazyLock<IntCounterVec> = ...
-static MCP_TOOL_CALLS: LazyLock<IntCounterVec> = ...
-static MCP_TOOL_DURATION: LazyLock<HistogramVec> = ...
-static MCP_REJECTIONS: LazyLock<IntCounterVec> = ...
+// 4 metric name constants
+pub const METRIC_MCP_REQUESTS_TOTAL: &str = "praxis_mcp_requests_total";
+pub const METRIC_MCP_TOOL_CALLS_TOTAL: &str = "praxis_mcp_tool_calls_total";
+pub const METRIC_MCP_TOOL_CALL_DURATION: &str = "praxis_mcp_tool_call_duration_seconds";
+pub const METRIC_MCP_FILTER_REJECTIONS_TOTAL: &str = "praxis_mcp_filter_rejections_total";
+
+// Per-instance state stored in filter_state (not shared filter_metadata)
+pub(crate) struct McpMetricsState { pub start_ns: u64, pub tool_name: String }
 
 // 3 recording functions called from mod.rs
-pub(crate) fn record_mcp_request(method: &str, protocol_version: Option<&str>) { ... }
-pub(crate) fn record_tool_call_completed(tool: &str, cluster: &str, status: u16, duration: Duration) { ... }
-pub(crate) fn record_filter_rejection(method: &str, reason: &str) { ... }
+pub fn record_mcp_request(method: &str, protocol_version: &str) { ... }
+pub fn record_tool_call_completed(tool: &str, cluster: &str, transport_status: &str, duration_seconds: f64) { ... }
+pub fn record_filter_rejection(method: &str, reason: &str) { ... }
 ```
 
 ### Design decisions
 
 - **Follows existing Praxis patterns** — same cardinality bounding approach as `llm_metrics.rs`, same label conventions, same test style
-- **No new dependencies** — uses `prometheus` crate already in `Cargo.toml`
+- **No new dependencies** — uses `metrics` crate already in `Cargo.toml`
 - **Tool name capped at 64 chars** — prevents cardinality explosion from malicious inputs
-- **Status mapped to `ok`/`error`** — not raw HTTP codes, to keep cardinality bounded
+- **`transport_status` mapped to `ok`/`error`** — not raw HTTP codes, to keep cardinality bounded; named to clarify it reflects HTTP transport outcome only, not JSON-RPC application success
 - **Build-time patching** — `patch-mod-rs.py` wires metrics into `mod.rs` without forking Praxis
 
 ---

@@ -13,7 +13,7 @@ This project adds 4 MCP-specific Prometheus metrics, an interactive demo dashboa
 | Metric | Type | Labels | What It Tells You |
 |--------|------|--------|-------------------|
 | `praxis_mcp_requests_total` | Counter | `method`, `protocol_version` | How many MCP requests by method (tools/list, tools/call, etc.) and protocol version |
-| `praxis_mcp_tool_calls_total` | Counter | `tool`, `cluster`, `status` | Per-tool call counts with success/failure — which tools are hot, which are failing |
+| `praxis_mcp_tool_calls_total` | Counter | `tool`, `cluster`, `transport_status` | Per-tool call counts with HTTP transport outcome — which tools are hot, which are failing |
 | `praxis_mcp_tool_call_duration_seconds` | Histogram | `tool`, `cluster` | Upstream round-trip time per tool — find slow backends before users notice |
 | `praxis_mcp_filter_rejections_total` | Counter | `method`, `reason` | Requests rejected by the filter — misconfiguration, attacks, bad clients |
 
