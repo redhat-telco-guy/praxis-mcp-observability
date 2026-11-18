@@ -248,7 +248,7 @@ pub const METRIC_MCP_TOOL_CALL_DURATION: &str = "praxis_mcp_tool_call_duration_s
 pub const METRIC_MCP_FILTER_REJECTIONS_TOTAL: &str = "praxis_mcp_filter_rejections_total";
 
 // Per-instance state stored in filter_state (not shared filter_metadata)
-pub(crate) struct McpMetricsState { pub start_ns: u64, pub tool_name: String }
+pub(crate) struct McpMetricsState { pub start: std::time::Instant, pub tool_name: String }
 
 // 3 recording functions called from mod.rs
 pub fn record_mcp_request(method: &str, protocol_version: &str) { ... }

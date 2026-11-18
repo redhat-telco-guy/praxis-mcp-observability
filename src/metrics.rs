@@ -78,8 +78,12 @@ pub const METRIC_MCP_FILTER_REJECTIONS_TOTAL: &str = "praxis_mcp_filter_rejectio
 /// `filter_metadata` ensures that two MCP filter instances in the same
 /// pipeline do not overwrite each other's timing or tool name.
 pub(crate) struct McpMetricsState {
-    /// Wall-clock start time in nanoseconds since epoch.
-    pub start_ns: u64,
+    /// Monotonic start time for duration measurement.
+    ///
+    /// Uses [`std::time::Instant`] instead of wall-clock time so that
+    /// system-clock adjustments never produce negative or inflated
+    /// histogram values.
+    pub start: std::time::Instant,
     /// Tool name extracted from the JSON-RPC `params.name` field.
     pub tool_name: String,
 }
@@ -188,8 +192,9 @@ const KNOWN_METHODS: &[&str] = &[
     "tools/call",
     "tools/list",
     "initialize",
-    "initialized",
+    "notifications/initialized",
     "ping",
+    "logging/setLevel",
     "resources/list",
     "resources/read",
     "prompts/list",
@@ -445,8 +450,12 @@ mod tests {
         assert_eq!(sanitize_method("tools/call"), "tools/call");
         assert_eq!(sanitize_method("tools/list"), "tools/list");
         assert_eq!(sanitize_method("initialize"), "initialize");
+        assert_eq!(sanitize_method("notifications/initialized"), "notifications/initialized");
+        assert_eq!(sanitize_method("logging/setLevel"), "logging/setLevel");
         assert_eq!(sanitize_method("evil_method"), "other");
         assert_eq!(sanitize_method(""), "other");
+        // "initialized" (without namespace) is NOT in the known set
+        assert_eq!(sanitize_method("initialized"), "other");
     }
 
     #[test]

@@ -16,13 +16,13 @@ if "pub(crate) mod metrics;" not in content:
     content = content.replace("mod broker;", "mod broker;\npub(crate) mod metrics;")
     print("  [patch 1] Added mod metrics declaration")
 
-# Patch 2: Add SystemTime to imports
-if "time::SystemTime" not in content:
+# Patch 2: Add Instant to imports (monotonic clock for duration measurement)
+if "time::Instant" not in content:
     content = content.replace(
         "use std::borrow::Cow;",
-        "use std::{borrow::Cow, time::SystemTime};"
+        "use std::{borrow::Cow, time::Instant};"
     )
-    print("  [patch 2] Added SystemTime import")
+    print("  [patch 2] Added Instant import")
 
 # Patch 3: Add metrics imports (include record_tool_call_completed for on_response)
 # Also handle the case where old-style imports (META_MCP_*) exist and need replacing.
@@ -72,17 +72,11 @@ if "ctx.set_metadata(META_MCP_REQUEST_START_NS" in content:
         '        // Uses filter_state (keyed by current_filter_id) so two MCP filter\n'
         '        // instances in the same pipeline do not overwrite each other.\n'
         '        if matches!(mcp_envelope.method, McpMethod::ToolsCall) {\n'
-        '            let epoch_ns = SystemTime::now()\n'
-        '                .duration_since(std::time::UNIX_EPOCH)\n'
-        '                .map(|d| d.as_nanos() as u64)\n'
-        '                .unwrap_or(0);\n'
         '            let tool_name = mcp_envelope\n'
         '                .name\n'
-        '                .as_deref()\n'
-        '                .unwrap_or("unknown")\n'
-        '                .to_owned();\n'
+        '                .unwrap_or_else(|| "unknown".to_owned());\n'
         '            ctx.insert_filter_state(McpMetricsState {\n'
-        '                start_ns: epoch_ns,\n'
+        '                start: Instant::now(),\n'
         '                tool_name,\n'
         '            });\n'
         '        }'
@@ -101,14 +95,7 @@ if "ctx.get_metadata(META_MCP_REQUEST_START_NS)" in content:
         '        // Uses filter_state (per-instance) so two MCP filters in the same\n'
         '        // pipeline each track their own tool call independently.\n'
         '        if let Some(state) = ctx.get_filter_state::<McpMetricsState>() {\n'
-        '            let now_ns = SystemTime::now()\n'
-        '                .duration_since(std::time::UNIX_EPOCH)\n'
-        '                .map(|d| d.as_nanos() as u64)\n'
-        '                .unwrap_or(0);\n'
-        '            let elapsed = std::time::Duration::from_nanos(\n'
-        '                now_ns.saturating_sub(state.start_ns),\n'
-        '            );\n'
-        '            let duration_seconds = elapsed.as_secs_f64();\n'
+        '            let duration_seconds = state.start.elapsed().as_secs_f64();\n'
         '\n'
         '            let tool = &state.tool_name;\n'
         '            let cluster = ctx\n'
@@ -129,44 +116,71 @@ if "ctx.get_metadata(META_MCP_REQUEST_START_NS)" in content:
     content = old_resp_re.sub(new_resp, content)
     print("  [patch 3c] Replaced old get_metadata response block with get_filter_state")
 
-# Patch 4: Record request metrics after trace! in on_request_body
+# Patch 4a: Record request metrics immediately after envelope extraction.
+# Inserted BEFORE selector/header validation so rejected requests are
+# still counted in praxis_mcp_requests_total.
 if "record_mcp_request(" not in content:
-    trace_pattern = r'(trace!\([^;]*\);)'
-    match = re.search(trace_pattern, content, re.DOTALL)
-    if match:
-        trace_end = match.end()
-        metrics_code = '''
+    env_idx = content.find('extract_mcp_envelope')
+    if env_idx >= 0:
+        # Find the closing brace of the extraction match block.
+        match_start = content.find('{', env_idx)
+        if match_start is not None and match_start >= 0:
+            depth = 1
+            i = match_start + 1
+            while i < len(content) and depth > 0:
+                if content[i] == '{':
+                    depth += 1
+                elif content[i] == '}':
+                    depth -= 1
+                i += 1
+            # Skip optional ';' and whitespace after closing '}'
+            while i < len(content) and content[i] in ' \t':
+                i += 1
+            if i < len(content) and content[i] == ';':
+                i += 1
+            early_metrics = '''
 
         // ── MCP metrics (request phase) ──
+        // Recorded before selector/header validation so rejected requests
+        // are still counted in praxis_mcp_requests_total.
         let method_str = mcp_envelope.method.as_str();
         let pv = mcp_envelope
             .protocol_version
             .as_deref()
             .unwrap_or("unknown");
-        record_mcp_request(method_str, pv);
+        record_mcp_request(method_str, pv);'''
+            content = content[:i] + early_metrics + content[i:]
+            print("  [patch 4a] Added record_mcp_request before validation")
+        else:
+            errors.append("patch 4a: Could not find opening brace for extraction match")
+    else:
+        errors.append("patch 4a: Could not find extract_mcp_envelope call")
+
+# Patch 4b: Store per-instance filter state for tools/call after trace!.
+# This needs the routing decision context, so it stays after validation.
+if "insert_filter_state(McpMetricsState" not in content:
+    trace_pattern = r'(trace!\([^;]*\);)'
+    match = re.search(trace_pattern, content, re.DOTALL)
+    if match:
+        trace_end = match.end()
+        state_code = '''
 
         // For tools/call, store per-instance metrics state for the response phase.
         // Uses filter_state (keyed by current_filter_id) so two MCP filter
         // instances in the same pipeline do not overwrite each other.
         if matches!(mcp_envelope.method, McpMethod::ToolsCall) {
-            let epoch_ns = SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos() as u64)
-                .unwrap_or(0);
             let tool_name = mcp_envelope
                 .name
-                .as_deref()
-                .unwrap_or("unknown")
-                .to_owned();
+                .unwrap_or_else(|| "unknown".to_owned());
             ctx.insert_filter_state(McpMetricsState {
-                start_ns: epoch_ns,
+                start: Instant::now(),
                 tool_name,
             });
         }'''
-        content = content[:trace_end] + metrics_code + content[trace_end:]
-        print("  [patch 4] Added request metrics recording")
+        content = content[:trace_end] + state_code + content[trace_end:]
+        print("  [patch 4b] Added insert_filter_state for tools/call")
     else:
-        errors.append("patch 4: Could not find trace! call in on_request_body")
+        errors.append("patch 4b: Could not find trace! call in on_request_body")
 
 # Patch 5: Record rejection for invalid_params
 # This is inside a match arm: "=> Some(mcp_invalid_params_rejection(...))"
@@ -292,8 +306,7 @@ if 'record_filter_rejection(' not in content or '"invalid_jsonrpc"' not in conte
         errors.append("patch 6c: Could not find JSON-RPC error return pattern")
 
 # Patch 7: Add on_response method
-# Uses Duration arithmetic instead of raw u128→f64 cast to satisfy
-# clippy::cast_precision_loss (denied in the workspace).
+# Uses Instant::elapsed() for monotonic duration measurement.
 if "fn on_response" not in content:
     on_response_code = '''
     async fn on_response(
@@ -304,14 +317,7 @@ if "fn on_response" not in content:
         // Uses filter_state (per-instance) so two MCP filters in the same
         // pipeline each track their own tool call independently.
         if let Some(state) = ctx.get_filter_state::<McpMetricsState>() {
-            let now_ns = SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos() as u64)
-                .unwrap_or(0);
-            let elapsed = std::time::Duration::from_nanos(
-                now_ns.saturating_sub(state.start_ns),
-            );
-            let duration_seconds = elapsed.as_secs_f64();
+            let duration_seconds = state.start.elapsed().as_secs_f64();
 
             let tool = &state.tool_name;
             let cluster = ctx
