@@ -1,0 +1,103 @@
+{
+  "annotations": { "list": [] },
+  "description": "MCP Audit Logging — Structured audit events from the Praxis AI Gateway",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "Audit Events by Outcome",
+      "description": "Single query — extracts completed/rejected/initiated from log lines",
+      "type": "bargauge",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "targets": [{
+        "datasource": { "type": "loki" },
+        "expr": "sum by (outcome) (count_over_time({kubernetes_namespace_name=\"praxis-mcp-test\"} |= \"mcp.call.\" | regexp \"mcp\\\\.call\\\\.(?P<outcome>completed|rejected|initiated)\" [$__range]))",
+        "legendFormat": "{{outcome}}",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "steps": [
+              { "color": "#34d399", "value": null }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "completed" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#34d399", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "rejected" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#f87171", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "initiated" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#22d3ee", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "minVizWidth": 75,
+        "minVizHeight": 75,
+        "text": { "titleSize": 14, "valueSize": 28 }
+      }
+    },
+    {
+      "title": "Audit Volume by Pod",
+      "description": "Which pods are generating audit events",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
+      "targets": [{
+        "datasource": { "type": "loki" },
+        "expr": "sum by (kubernetes_pod_name) (count_over_time({kubernetes_namespace_name=\"praxis-mcp-test\"} |= \"mcp.call.\" [$__range]))",
+        "queryType": "instant",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Value" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "thresholds", "value": { "steps": [{ "color": "#34d399", "value": null }, { "color": "#fbbf24", "value": 50 }, { "color": "#f87171", "value": 200 }] } }] }
+        ]
+      },
+      "options": { "showHeader": true }
+    },
+    {
+      "title": "Recent Audit Events",
+      "description": "Live stream of audit log entries — click any row to see all fields",
+      "type": "logs",
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 12 },
+      "targets": [{
+        "datasource": { "type": "loki" },
+        "expr": "{kubernetes_namespace_name=\"praxis-mcp-test\"} |= \"mcp.call.\"",
+        "refId": "A"
+      }],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["praxis", "mcp", "audit", "loki"],
+  "templating": { "list": [] },
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Praxis MCP Audit Logging",
+  "uid": "praxis-mcp-audit",
+  "version": 8
+}

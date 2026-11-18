@@ -1,0 +1,120 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: praxis-mcp-alerts
+  namespace: praxis-mcp-test
+  labels:
+    app: praxis-ai
+    prometheus: k8s
+    role: alert-rules
+spec:
+  groups:
+    - name: praxis-mcp.rules
+      rules:
+
+        # ── Alert 1: Agent loop / runaway agent ─────────────────────────────
+        # Fires when any single tool gets more than 50 calls in 5 minutes.
+        # Indicates a runaway agent stuck in a tool-call loop.
+        - alert: McpExcessiveToolCalls
+          expr: |
+            increase(praxis_mcp_tool_calls_total[5m]) > 50
+          for: 1m
+          labels:
+            severity: warning
+            component: mcp
+          annotations:
+            summary: "MCP tool {{ $labels.tool }} has excessive call volume"
+            description: >
+              Tool '{{ $labels.tool }}' on cluster '{{ $labels.cluster }}'
+              received {{ $value | humanize }} calls in the last 5 minutes.
+              This may indicate a runaway agent loop or prompt injection
+              driving repeated tool calls. Check the audit logs in Loki
+              for session details.
+            runbook: "Check Grafana audit dashboard → filter by tool name"
+
+        # ── Alert 2: High rejection rate ────────────────────────────────────
+        # Fires when rejection rate exceeds 20% of total MCP requests.
+        # Indicates misconfigured clients or possible attack.
+        - alert: McpHighRejectionRate
+          expr: |
+            (
+              sum(rate(praxis_mcp_filter_rejections_total[5m]))
+              /
+              sum(rate(praxis_mcp_requests_total[5m]))
+            ) > 0.2
+          for: 2m
+          labels:
+            severity: warning
+            component: mcp
+          annotations:
+            summary: "MCP filter rejection rate above 20%"
+            description: >
+              {{ $value | humanizePercentage }} of MCP requests are being
+              rejected by the filter. Top rejection reason:
+              {{ with query "topk(1, sum by (reason) (rate(praxis_mcp_filter_rejections_total[5m])))" }}{{ . | first | label "reason" }}{{ end }}.
+              This may indicate misconfigured clients, missing headers, or
+              a denial-of-service attempt.
+            runbook: "Check rejection reasons: sum by (reason) (rate(praxis_mcp_filter_rejections_total[5m]))"
+
+        # ── Alert 3: MCP tool call errors ───────────────────────────────────
+        # Fires when any tool has an error rate above 25% over 10 minutes.
+        # Indicates a degraded upstream MCP server.
+        - alert: McpToolCallErrorRate
+          expr: |
+            (
+              sum by (tool, cluster) (rate(praxis_mcp_tool_calls_total{transport_status="error"}[10m]))
+              /
+              sum by (tool, cluster) (rate(praxis_mcp_tool_calls_total[10m]))
+            ) > 0.25
+          for: 3m
+          labels:
+            severity: critical
+            component: mcp
+          annotations:
+            summary: "MCP tool {{ $labels.tool }} error rate above 25%"
+            description: >
+              Tool '{{ $labels.tool }}' on backend '{{ $labels.cluster }}'
+              has a {{ $value | humanizePercentage }} error rate over the
+              last 10 minutes. The upstream MCP server may be degraded.
+              Check pod logs and upstream health.
+            runbook: "Check upstream: oc logs -l app={{ $labels.cluster }} -n praxis-mcp-test"
+
+        # ── Alert 4: No MCP traffic ─────────────────────────────────────────
+        # Fires when no MCP requests have been seen for 15 minutes.
+        # Indicates Praxis or the route may be down.
+        - alert: McpNoTraffic
+          expr: |
+            sum(rate(praxis_mcp_requests_total[15m])) == 0
+          for: 15m
+          labels:
+            severity: info
+            component: mcp
+          annotations:
+            summary: "No MCP traffic for 15 minutes"
+            description: >
+              Praxis has received zero MCP requests in the last 15 minutes.
+              This may be expected (no active agents), or it may indicate
+              the proxy or OCP Route is down.
+            runbook: "Check: oc get pods -l app=praxis-ai -n praxis-mcp-test"
+
+        # ── Alert 5: High tool call latency ─────────────────────────────────
+        # Fires when average tool call duration exceeds 5 seconds.
+        - alert: McpHighToolLatency
+          expr: |
+            (
+              rate(praxis_mcp_tool_call_duration_seconds_sum[5m])
+              /
+              rate(praxis_mcp_tool_call_duration_seconds_count[5m])
+            ) > 5
+          for: 3m
+          labels:
+            severity: warning
+            component: mcp
+          annotations:
+            summary: "MCP tool {{ $labels.tool }} average latency above 5s"
+            description: >
+              Tool '{{ $labels.tool }}' on backend '{{ $labels.cluster }}'
+              has an average response time of {{ $value | humanizeDuration }}.
+              The upstream MCP server may be overloaded or experiencing
+              network issues.
+            runbook: "Check upstream health and praxis_mcp_tool_call_duration_seconds histogram"

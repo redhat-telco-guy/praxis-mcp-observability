@@ -1,0 +1,182 @@
+# ClusterLogForwarder — MCP Audit Log Pipeline (Logging v6.7+)
+#
+# Routes structured audit events emitted by Praxis (log_type: mcp_audit)
+# to a dedicated Loki stream, separate from general proxy diagnostic logs.
+#
+# Architecture:
+#   Praxis pods → stdout (JSON) → Vector collector → [parse + filter] → LokiStack
+#
+# Prerequisites:
+#   - OpenShift Logging 6.7+ (observability.openshift.io/v1 API)
+#   - LokiStack deployed in openshift-logging
+#   - Praxis pods labelled: app=praxis-ai  namespace=praxis-mcp-test
+#   - ServiceAccount with log collection permissions (created below)
+#
+# Apply:
+#   oc apply -f deploy/cluster-log-forwarder.yaml
+#
+# Verify:
+#   oc get clusterlogforwarder mcp-audit-forwarder -n openshift-logging -o yaml
+#
+
+---
+# ServiceAccount for the log collector — required by Logging v6.x
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-audit-collector
+  namespace: openshift-logging
+
+---
+# ClusterRoleBinding to allow the SA to collect logs
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-audit-collector-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: collect-application-logs
+subjects:
+  - kind: ServiceAccount
+    name: mcp-audit-collector
+    namespace: openshift-logging
+
+---
+# ClusterRoleBinding for Loki write access (required by the Loki gateway
+# to accept log writes from the collector SA)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-audit-collector-loki-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-logging-write-application-logs
+subjects:
+  - kind: ServiceAccount
+    name: mcp-audit-collector
+    namespace: openshift-logging
+
+---
+# ClusterRole for Loki read access — OCP Logging 6.7 uses the
+# loki.grafana.com API group for gateway tenant authorization
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: loki-application-reader
+rules:
+  - apiGroups: ["loki.grafana.com"]
+    resources: ["application"]
+    resourceNames: ["logs"]
+    verbs: ["get"]
+
+---
+# ClusterRoleBinding for Loki read access (required by Grafana to query
+# application logs via the collector SA token)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-audit-collector-loki-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: loki-application-reader
+subjects:
+  - kind: ServiceAccount
+    name: mcp-audit-collector
+    namespace: openshift-logging
+
+---
+apiVersion: observability.openshift.io/v1
+kind: ClusterLogForwarder
+metadata:
+  name: mcp-audit-forwarder
+  namespace: openshift-logging
+  labels:
+    app.kubernetes.io/name: praxis-mcp-audit
+    app.kubernetes.io/component: log-forwarding
+spec:
+  serviceAccount:
+    name: mcp-audit-collector
+
+  # ── Input: Praxis pods only ───────────────────────────────────────────────
+  inputs:
+    - name: praxis-pods
+      type: application
+      application:
+        namespaces:
+          - praxis-mcp-test
+        selector:
+          matchLabels:
+            app: praxis-ai
+
+  # ── Filters ──────────────────────────────────────────────────────────────
+  filters:
+    # 1. Parse the JSON log line so individual fields are accessible.
+    - name: parse-json
+      type: parse
+
+    # 2. Keep only audit events — drop everything where .message does NOT
+    #    contain "mcp.call." (our audit event message prefix).
+    #    Logging v6.x drop filter requires a test array with field/matches.
+    - name: audit-only
+      type: drop
+      drop:
+        - test:
+            - field: .message
+              notMatches: "mcp\\.call\\."
+
+    # 3. Prune to keep only the fields we care about — reduces log volume
+    #    and keeps Loki storage efficient.
+    - name: prune-fields
+      type: prune
+      prune:
+        notIn:
+          - .message
+          - .kubernetes
+          - .log_type
+          - .log_source
+          - .openshift
+
+  # ── Pipeline ──────────────────────────────────────────────────────────────
+  pipelines:
+    - name: mcp-audit-to-loki
+      inputRefs:
+        - praxis-pods
+      filterRefs:
+        - parse-json
+        - audit-only
+      outputRefs:
+        - loki-mcp-audit
+
+  # ── Output: LokiStack ────────────────────────────────────────────────────
+  outputs:
+    - name: loki-mcp-audit
+      type: lokiStack
+      tls:
+        ca:
+          configMapName: logging-loki-gateway-ca-bundle
+          key: service-ca.crt
+      lokiStack:
+        target:
+          name: logging-loki
+          namespace: openshift-logging
+        authentication:
+          token:
+            from: serviceAccount
+
+---
+# ── LogQL quick-reference ─────────────────────────────────────────────────
+#
+# All audit events, last 1 hour:
+#   {log_type="application", kubernetes_namespace_name="praxis-mcp-test"}
+#     | json | line_format "{{.message}}"
+#
+# Filter by outcome:
+#   {log_type="application", kubernetes_namespace_name="praxis-mcp-test"}
+#     | json | message =~ "mcp.call.completed"
+#
+# Rejected calls:
+#   {log_type="application", kubernetes_namespace_name="praxis-mcp-test"}
+#     | json | message =~ "mcp.call.rejected"
