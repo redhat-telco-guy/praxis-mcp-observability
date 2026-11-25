@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Section 4 — Audit Trail</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#181b1f;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px}
+.dashboard{max-width:1000px;margin:0 auto}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #374151}
+.header h1{font-size:18px;font-weight:600;color:#e5e7eb}
+.header .subtitle{font-size:12px;color:#6b7280}
+.section-title{font-size:15px;font-weight:500;color:#9ca3af;margin-bottom:12px;padding:6px 0;border-bottom:1px solid #2d3748}
+.top-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px}
+.panel{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:14px}
+.panel-title{font-size:13px;color:#9ca3af;margin-bottom:12px;font-weight:500}
+.bar-container{margin-bottom:8px}
+.bar-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
+.bar-label .name{color:#d1d5db}
+.bar-label .val{color:#e5e7eb;font-weight:600}
+.bar-track{height:24px;background:#111827;border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;font-size:11px;font-weight:600;color:#fff}
+.donut-container{display:flex;align-items:center;justify-content:center;gap:14px}
+.legend{font-size:11px;color:#d1d5db}
+.legend-item{display:flex;align-items:center;gap:5px;margin-bottom:3px}
+.legend-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.time-panel{margin-bottom:12px}
+.chart-area{position:relative;height:100px;border-left:1px solid #374151;border-bottom:1px solid #374151;padding-left:30px}
+.y-axis{position:absolute;left:-28px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:space-between;font-size:9px;color:#6b7280;padding:2px 0}
+.time-axis{display:flex;justify-content:space-between;font-size:9px;color:#6b7280;margin-top:3px;padding-left:30px}
+.legend-row{display:flex;gap:10px;margin-top:6px;font-size:10px;color:#9ca3af}
+.legend-row span{display:flex;align-items:center;gap:3px}
+.legend-sq{width:7px;height:7px;border-radius:1px;display:inline-block}
+/* Log panel */
+.log-panel{margin-top:0}
+.log-entry{border-bottom:1px solid #2d3748;padding:8px 0;font-size:12px;line-height:1.5}
+.log-entry:last-child{border-bottom:none}
+.log-ts{color:#6b7280;font-size:11px;font-family:monospace;margin-right:8px}
+.log-msg{font-family:monospace;color:#d1d5db;font-size:11px;word-break:break-all}
+.badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin-right:4px}
+.badge-ok{background:#065f46;color:#34d399}
+.badge-rejected{background:#7f1d1d;color:#f87171}
+.badge-initiated{background:#1e3a5f;color:#60a5fa}
+.field{color:#9ca3af}
+.field-val{color:#e5e7eb}
+.field-val-green{color:#34d399}
+.field-val-red{color:#f87171}
+.field-val-blue{color:#60a5fa}
+.field-val-yellow{color:#fbbf24}
+</style>
+</head>
+<body>
+<div class="dashboard">
+  <div class="header">
+    <h1>Praxis MCP — Metrics & Audit</h1>
+    <span class="subtitle">Live OCP Cluster &bull; Last 3 hours &bull; Data source: Loki</span>
+  </div>
+  <div class="section-title">Section 4 — Audit Trail (Loki) — Structured Event Log &nbsp;<span style="font-size:11px;color:#f87171">&#9664; this PR</span></div>
+
+  <div class="top-row">
+    <div class="panel">
+      <div class="panel-title">Audit Events by Outcome</div>
+      <div class="bar-container">
+        <div class="bar-label"><span class="name">completed</span><span class="val">3</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:100%;background:#34d399"></div></div>
+      </div>
+      <div class="bar-container">
+        <div class="bar-label"><span class="name">rejected</span><span class="val">1</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:33%;background:#f87171"></div></div>
+      </div>
+      <div class="bar-container">
+        <div class="bar-label"><span class="name">initiated</span><span class="val">1</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:33%;background:#60a5fa"></div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Rejections by Reason (Loki)</div>
+      <div class="donut-container">
+        <svg width="100" height="100" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#f97316" stroke-width="16"/>
+          <text x="50" y="48" text-anchor="middle" fill="#e5e7eb" font-size="14" font-weight="700">1</text>
+          <text x="50" y="62" text-anchor="middle" fill="#9ca3af" font-size="9">total</text>
+        </svg>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>invalid_params <b>1</b> (100%)</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Rejections by Tenant (Loki)</div>
+      <div class="bar-container">
+        <div class="bar-label"><span class="name">test-tenant-2</span><span class="val">1</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:100%;background:#f87171"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel time-panel">
+    <div class="panel-title">Audit Volume Over Time</div>
+    <div class="chart-area">
+      <div class="y-axis"><span>4</span><span>2</span><span>0</span></div>
+      <svg width="100%" height="100" viewBox="0 0 440 100" preserveAspectRatio="none">
+        <line x1="0" y1="25" x2="440" y2="25" stroke="#2d3748" stroke-width="0.5"/>
+        <line x1="0" y1="50" x2="440" y2="50" stroke="#2d3748" stroke-width="0.5"/>
+        <line x1="0" y1="75" x2="440" y2="75" stroke="#2d3748" stroke-width="0.5"/>
+        <!-- completed bars (green) -->
+        <rect x="170" y="40" width="25" height="56" fill="#34d399" opacity="0.7" rx="2"/>
+        <rect x="330" y="62" width="25" height="34" fill="#34d399" opacity="0.7" rx="2"/>
+        <!-- rejected (red) -->
+        <rect x="170" y="18" width="25" height="22" fill="#f87171" opacity="0.7" rx="2"/>
+        <!-- initiated (blue) -->
+        <rect x="170" y="0" width="25" height="18" fill="#60a5fa" opacity="0.7" rx="2"/>
+      </svg>
+    </div>
+    <div class="time-axis"><span>20:30</span><span>21:00</span><span>21:30</span><span>22:00</span><span>22:30</span><span>23:00</span></div>
+    <div class="legend-row">
+      <span><i class="legend-sq" style="background:#34d399"></i> completed</span>
+      <span><i class="legend-sq" style="background:#f87171"></i> rejected</span>
+      <span><i class="legend-sq" style="background:#60a5fa"></i> initiated</span>
+    </div>
+  </div>
+
+  <div class="panel log-panel">
+    <div class="panel-title">Recent Audit Events</div>
+
+    <div class="log-entry">
+      <span class="log-ts">2026-11-25 22:56:40</span>
+      <span class="badge badge-ok">completed</span>
+      <span class="log-msg">
+        <span class="field">mcp.call.completed</span>
+        <span class="field">log_type=</span><span class="field-val">"mcp_audit"</span>
+        <span class="field">mcp_method=</span><span class="field-val">"tools/call"</span>
+        <span class="field">mcp_name=</span><span class="field-val-green">"get_weather"</span>
+        <span class="field">mcp_outcome=</span><span class="field-val-green">"ok"</span>
+        <span class="field">mcp_upstream_status=</span><span class="field-val">200</span>
+        <span class="field">mcp_duration_ms=</span><span class="field-val-yellow">130</span>
+        <span class="field">mcp_cluster=</span><span class="field-val">"weather-mcp"</span>
+        <span class="field">tenant=</span><span class="field-val-blue">"test-tenant-1"</span>
+      </span>
+    </div>
+
+    <div class="log-entry">
+      <span class="log-ts">2026-11-25 20:45:26</span>
+      <span class="badge badge-initiated">initiated</span>
+      <span class="log-msg">
+        <span class="field">mcp.call.initiated</span>
+        <span class="field">log_type=</span><span class="field-val">"mcp_audit"</span>
+        <span class="field">mcp_method=</span><span class="field-val">"tools/list"</span>
+        <span class="field">mcp_outcome=</span><span class="field-val-blue">"initiated"</span>
+        <span class="field">tenant=</span><span class="field-val-blue">"test-tenant-3"</span>
+      </span>
+    </div>
+
+    <div class="log-entry">
+      <span class="log-ts">2026-11-25 20:45:22</span>
+      <span class="badge badge-rejected">rejected</span>
+      <span class="log-msg">
+        <span class="field">mcp.call.rejected</span>
+        <span class="field">log_type=</span><span class="field-val">"mcp_audit"</span>
+        <span class="field">mcp_method=</span><span class="field-val">"tools/call"</span>
+        <span class="field">mcp_outcome=</span><span class="field-val-red">"rejected"</span>
+        <span class="field">mcp_rejection_reason=</span><span class="field-val-red">"invalid_params"</span>
+        <span class="field">tenant=</span><span class="field-val-blue">"test-tenant-2"</span>
+      </span>
+    </div>
+
+    <div class="log-entry">
+      <span class="log-ts">2026-11-25 20:45:17</span>
+      <span class="badge badge-ok">completed</span>
+      <span class="log-msg">
+        <span class="field">mcp.call.completed</span>
+        <span class="field">log_type=</span><span class="field-val">"mcp_audit"</span>
+        <span class="field">mcp_method=</span><span class="field-val">"tools/call"</span>
+        <span class="field">mcp_name=</span><span class="field-val-green">"get_weather"</span>
+        <span class="field">mcp_outcome=</span><span class="field-val-green">"ok"</span>
+        <span class="field">mcp_upstream_status=</span><span class="field-val">200</span>
+        <span class="field">mcp_duration_ms=</span><span class="field-val-yellow">118</span>
+        <span class="field">mcp_cluster=</span><span class="field-val">"weather-mcp"</span>
+        <span class="field">tenant=</span><span class="field-val-blue">"test-tenant-1"</span>
+      </span>
+    </div>
+
+    <div class="log-entry">
+      <span class="log-ts">2026-11-25 20:44:45</span>
+      <span class="badge badge-ok">completed</span>
+      <span class="log-msg">
+        <span class="field">mcp.call.completed</span>
+        <span class="field">log_type=</span><span class="field-val">"mcp_audit"</span>
+        <span class="field">mcp_method=</span><span class="field-val">"tools/call"</span>
+        <span class="field">mcp_name=</span><span class="field-val-green">"get_weather"</span>
+        <span class="field">mcp_outcome=</span><span class="field-val-green">"ok"</span>
+        <span class="field">mcp_upstream_status=</span><span class="field-val">200</span>
+        <span class="field">mcp_duration_ms=</span><span class="field-val-yellow">153</span>
+        <span class="field">mcp_cluster=</span><span class="field-val">"weather-mcp"</span>
+        <span class="field">tenant=</span><span class="field-val-blue">"loki-verify"</span>
+      </span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

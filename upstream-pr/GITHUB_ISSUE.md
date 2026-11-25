@@ -42,7 +42,7 @@ Uses existing `metrics`, `arc_swap` crates already in the workspace.
 
 ```promql
 # Per-tool error rate
-rate(praxis_mcp_tool_calls_total{status="error"}[5m])
+rate(praxis_mcp_tool_calls_total{transport_status="error"}[5m])
   / rate(praxis_mcp_tool_calls_total[5m]) > 0.05
 
 # p99 tool call latency

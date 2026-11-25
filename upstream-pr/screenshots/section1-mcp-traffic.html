@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Section 1 — MCP Traffic</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#181b1f;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px}
+.dashboard{max-width:1000px;margin:0 auto}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #374151}
+.header h1{font-size:18px;font-weight:600;color:#e5e7eb}
+.header .subtitle{font-size:12px;color:#6b7280}
+.section-title{font-size:15px;font-weight:500;color:#9ca3af;margin-bottom:12px;padding:6px 0;border-bottom:1px solid #2d3748}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat-card{border-radius:8px;padding:20px 16px;text-align:center}
+.stat-card .value{font-size:36px;font-weight:700;line-height:1.1}
+.stat-card .label{font-size:13px;margin-top:6px;opacity:0.9}
+.stat-purple{background:#4338ca}
+.stat-green{background:#059669}
+.stat-red{background:#dc2626}
+.stat-latency{background:#0d9488}
+.charts-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px}
+.panel{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:14px}
+.panel-title{font-size:13px;color:#9ca3af;margin-bottom:12px;font-weight:500}
+.donut-container{display:flex;align-items:center;justify-content:center;gap:16px}
+.legend{font-size:12px;color:#d1d5db}
+.legend-item{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.table-panel{margin-top:0}
+.table-panel table{width:100%;border-collapse:collapse;font-size:12px}
+.table-panel th{text-align:left;color:#9ca3af;padding:6px 10px;border-bottom:1px solid #374151;font-weight:500}
+.table-panel td{padding:6px 10px;border-bottom:1px solid #2d3748;color:#d1d5db}
+.table-panel tr:last-child td{border-bottom:none}
+</style>
+</head>
+<body>
+<div class="dashboard">
+  <div class="header">
+    <h1>Praxis MCP — Metrics & Audit</h1>
+    <span class="subtitle">Live OCP Cluster &bull; Last 3 hours</span>
+  </div>
+  <div class="section-title">Section 1 — MCP Traffic (what Praxis sees) &nbsp;<span style="font-size:11px;color:#6b7280">praxis_mcp_requests_total</span></div>
+
+  <div class="stat-row">
+    <div class="stat-card stat-purple">
+      <div class="value">5</div>
+      <div class="label">Total MCP Requests</div>
+    </div>
+    <div class="stat-card stat-green">
+      <div class="value">3</div>
+      <div class="label">Total Tool Calls</div>
+    </div>
+    <div class="stat-card stat-red">
+      <div class="value">1</div>
+      <div class="label">Requests Rejected</div>
+    </div>
+    <div class="stat-card stat-latency">
+      <div class="value">0.13s</div>
+      <div class="label">Avg Tool Latency</div>
+    </div>
+  </div>
+
+  <div class="charts-row">
+    <div class="panel">
+      <div class="panel-title">Requests by MCP Method</div>
+      <div class="donut-container">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#374151" stroke-width="20"/>
+          <!-- tools/call = 80% -->
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#6366f1" stroke-width="20"
+            stroke-dasharray="251.3 314.2" stroke-dashoffset="78.5" transform="rotate(-90 60 60)"/>
+          <!-- tools/list = 20% -->
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#34d399" stroke-width="20"
+            stroke-dasharray="62.8 314.2" stroke-dashoffset="-172.8" transform="rotate(-90 60 60)"/>
+          <text x="60" y="58" text-anchor="middle" fill="#e5e7eb" font-size="16" font-weight="700">5</text>
+          <text x="60" y="72" text-anchor="middle" fill="#9ca3af" font-size="10">total</text>
+        </svg>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div>tools/call &nbsp;<b>4</b> (80%)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>tools/list &nbsp;<b>1</b> (20%)</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Rejection Reasons</div>
+      <div class="donut-container">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#f97316" stroke-width="20"/>
+          <text x="60" y="58" text-anchor="middle" fill="#e5e7eb" font-size="16" font-weight="700">1</text>
+          <text x="60" y="72" text-anchor="middle" fill="#9ca3af" font-size="10">total</text>
+        </svg>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>invalid_params &nbsp;<b>1</b> (100%)</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel table-panel">
+      <div class="panel-title">Rejection Details</div>
+      <table>
+        <tr><th>Method</th><th>Reason</th><th style="text-align:right">Count</th></tr>
+        <tr><td>tools/call</td><td style="color:#f97316">invalid_params</td><td style="text-align:right">1</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+</body>
+</html>

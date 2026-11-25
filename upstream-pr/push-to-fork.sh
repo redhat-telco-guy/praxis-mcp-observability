@@ -85,15 +85,15 @@ observability gap for MCP tool-call traffic routed through Praxis.
 
 New metrics:
   - praxis_mcp_requests_total{method, protocol_version}
-  - praxis_mcp_tool_calls_total{tool, cluster, status}
+  - praxis_mcp_tool_calls_total{tool, cluster, transport_status}
   - praxis_mcp_tool_call_duration_seconds{tool, cluster}
   - praxis_mcp_filter_rejections_total{method, reason}
 
 Design decisions:
   - Tool-name cardinality bounded via ArcSwap<HashSet<String>>,
     cap of 512 distinct values, overflow → \"other\"
-  - Cross-phase timing uses nanos-since-epoch in HttpFilterContext
-    metadata (no per-request heap allocation)
+  - Cross-phase timing uses McpMetricsState in per-instance
+    filter_state (no collisions between multiple MCP filter instances)
   - Rejection reasons are a closed set: invalid_params,
     header_mismatch, missing_header, invalid_jsonrpc
   - All label vocabularies are bounded — safe for high-cardinality

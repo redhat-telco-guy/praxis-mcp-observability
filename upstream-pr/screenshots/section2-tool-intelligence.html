@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Section 2 — Tool Intelligence</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#181b1f;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px}
+.dashboard{max-width:1000px;margin:0 auto}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #374151}
+.header h1{font-size:18px;font-weight:600;color:#e5e7eb}
+.header .subtitle{font-size:12px;color:#6b7280}
+.section-title{font-size:15px;font-weight:500;color:#9ca3af;margin-bottom:12px;padding:6px 0;border-bottom:1px solid #2d3748}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px}
+.panel{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:14px}
+.panel-title{font-size:13px;color:#9ca3af;margin-bottom:12px;font-weight:500}
+.bar-container{margin-bottom:10px}
+.bar-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+.bar-label .name{color:#d1d5db}
+.bar-label .val{color:#e5e7eb;font-weight:600}
+.bar-track{height:28px;background:#111827;border-radius:4px;overflow:hidden;position:relative}
+.bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:10px;font-size:12px;font-weight:600;color:#fff}
+.gradient-green{background:linear-gradient(90deg,#059669,#34d399)}
+.gradient-blue{background:linear-gradient(90deg,#2563eb,#60a5fa)}
+.gradient-yellow{background:linear-gradient(90deg,#d97706,#fbbf24)}
+.donut-container{display:flex;align-items:center;justify-content:center;gap:16px}
+.legend{font-size:12px;color:#d1d5db}
+.legend-item{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.table-panel table{width:100%;border-collapse:collapse;font-size:12px}
+.table-panel th{text-align:left;color:#9ca3af;padding:6px 10px;border-bottom:1px solid #374151;font-weight:500}
+.table-panel td{padding:6px 10px;border-bottom:1px solid #2d3748;color:#d1d5db}
+.status-ok{color:#34d399;font-weight:600}
+</style>
+</head>
+<body>
+<div class="dashboard">
+  <div class="header">
+    <h1>Praxis MCP — Metrics & Audit</h1>
+    <span class="subtitle">Live OCP Cluster &bull; Last 3 hours</span>
+  </div>
+  <div class="section-title">Section 2 — Tool Intelligence (which tools, how often, how fast) &nbsp;<span style="font-size:11px;color:#6b7280">praxis_mcp_tool_calls_total + praxis_mcp_tool_call_duration_seconds</span></div>
+
+  <div class="row">
+    <div class="panel">
+      <div class="panel-title">Tool Call Distribution</div>
+      <div class="bar-container">
+        <div class="bar-label"><span class="name">get_weather</span><span class="val">3</span></div>
+        <div class="bar-track"><div class="bar-fill gradient-green" style="width:100%"></div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Tool Calls by MCP Server (Cluster)</div>
+      <div class="donut-container">
+        <svg width="110" height="110" viewBox="0 0 110 110">
+          <circle cx="55" cy="55" r="45" fill="none" stroke="#6366f1" stroke-width="18"/>
+          <text x="55" y="53" text-anchor="middle" fill="#e5e7eb" font-size="16" font-weight="700">3</text>
+          <text x="55" y="67" text-anchor="middle" fill="#9ca3af" font-size="10">total</text>
+        </svg>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div>weather-mcp &nbsp;<b>3</b> (100%)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row3">
+    <div class="panel table-panel">
+      <div class="panel-title">Tool x Status Breakdown</div>
+      <table>
+        <tr><th>Tool</th><th>Status</th><th style="text-align:right">Calls</th></tr>
+        <tr><td>get_weather</td><td class="status-ok">ok</td><td style="text-align:right">3</td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="panel-title">P95 Latency by Tool</div>
+      <div class="bar-container">
+        <div class="bar-label"><span class="name">get_weather</span><span class="val">0.153s</span></div>
+        <div class="bar-track"><div class="bar-fill gradient-yellow" style="width:30%"></div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Avg Latency by Tool</div>
+      <div class="bar-container">
+        <div class="bar-label"><span class="name">get_weather</span><span class="val">0.134s</span></div>
+        <div class="bar-track"><div class="bar-fill gradient-blue" style="width:26%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

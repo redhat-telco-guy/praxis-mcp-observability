@@ -19,8 +19,6 @@ Without MCP metrics, you're flying blind:
 | "Is someone sending garbage?" | Filter rejects silently — nobody knows | `sum by (reason) (rate(praxis_mcp_filter_rejections_total[5m]))` |
 | "What's my MCP request rate?" | Guess from HTTP access logs | `rate(praxis_mcp_requests_total[5m])` |
 
-Competing gateways (Kong AI Gateway, Portkey) already ship tool-level metrics. This brings Praxis to parity.
-
 ---
 
 ## The 4 metrics
@@ -28,18 +26,9 @@ Competing gateways (Kong AI Gateway, Portkey) already ship tool-level metrics. T
 | Metric | Type | Labels | What it tells you |
 |--------|------|--------|-------------------|
 | `praxis_mcp_requests_total` | Counter | `method`, `protocol_version` | MCP requests by method (`tools/call`, `tools/list`, `initialize`, etc.) |
-| `praxis_mcp_tool_calls_total` | Counter | `tool`, `cluster`, `status` | Per-tool call counts with success/failure — which tools are hot, which are failing |
-| `praxis_mcp_tool_call_duration_seconds` | Histogram | `tool`, `cluster` | Upstream round-trip latency per tool — find slow backends before users notice |
-| `praxis_mcp_filter_rejections_total` | Counter | `method`, `reason` | Requests rejected by the filter — misconfiguration, attacks, bad clients |
-
-### Rejection reasons (closed set)
-
-| Reason | When it fires |
-|--------|--------------|
-| `invalid_params` | `tools/call` sent without a tool name |
-| `header_mismatch` | `Mcp-Name` header doesn't match the body |
-| `missing_header` | Required MCP header is absent |
-| `invalid_jsonrpc` | Body fails JSON-RPC parsing entirely |
+| `praxis_mcp_tool_calls_total` | Counter | `tool`, `cluster`, `transport_status` | Per-tool call counts with HTTP transport outcome |
+| `praxis_mcp_tool_call_duration_seconds` | Summary | `tool`, `cluster` | Upstream round-trip latency per tool |
+| `praxis_mcp_filter_rejections_total` | Counter | `method`, `reason` | Requests rejected by the filter |
 
 ---
 
@@ -48,51 +37,21 @@ Competing gateways (Kong AI Gateway, Portkey) already ship tool-level metrics. T
 ![Praxis MCP Metrics Architecture](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/mcp-metrics/upstream-pr/architecture-metrics.png)
 
 ```
-                                              ┌──────────────────────────────────────────────────┐
-                                              │               OpenShift Cluster                   │
-                                              │                                                  │
-                                              │   ┌──────────────────────────────────────┐       │
-  ┌──────────┐    HTTPS     ┌──────────┐      │   │         Praxis AI Gateway             │       │
-  │ AI Agent │─────────────▶│OCP Route │─────▶│   │                                      │       │
-  │          │              │(HAProxy  │      │   │  ┌──────────┐ ┌────────┐ ┌────────┐  │       │
-  └──────────┘              │TLS Edge) │      │   │  │MCP Filter│→│ Router │→│   LB   │──┼──┐    │
-                            └──────────┘      │   │  │          │ │        │ │        │  │  │    │
-                                              │   │  │[M1]  [M4]│ │        │ │        │  │  │    │
-                                              │   │  └──────────┘ └────────┘ └────────┘  │  │    │
-                                              │   │       [M2] on response ──────────────┼──┤    │
-                                              │   │       [M3] on latency  ──────────────┼──┤    │
-                                              │   └──────────────────────────────────────┘  │    │
-                                              │                                             │    │
-                                              │   ┌────────────────┐ ┌────────────────┐     │    │
-                                              │   │  weather-mcp   │ │ calculator-mcp │     │    │
-                                              │   │  (get_weather, │ │ (add, multiply,│◀────┘    │
-                                              │   │   forecast)    │ │  factorial)    │          │
-                                              │   └────────────────┘ └────────────────┘          │
-                                              │   ┌────────────────┐                             │
-                                              │   │ translator-mcp │                             │
-                                              │   │ (translate,    │◀────────────────────────────┘
-                                              │   │  detect_lang)  │
-                                              │   └────────────────┘
-                                              │                                                  │
-                                              │   :9902/metrics ──▶ ServiceMonitor ──▶ Prometheus │
-                                              │                              ──▶ Grafana          │
-                                              └──────────────────────────────────────────────────┘
-
-  M1 = praxis_mcp_requests_total         (on request arrival)
-  M2 = praxis_mcp_tool_calls_total       (on response)
-  M3 = praxis_mcp_tool_call_duration_seconds (on response)
-  M4 = praxis_mcp_filter_rejections_total (on rejection)
+  M1 = praxis_mcp_requests_total         (on request arrival at MCP Filter)
+  M2 = praxis_mcp_tool_calls_total       (on response at Router)
+  M3 = praxis_mcp_tool_call_duration_seconds (on response, latency measurement)
+  M4 = praxis_mcp_filter_rejections_total (on rejection at MCP Filter)
 ```
 
 ### Data flow
 
 1. **Client** sends MCP JSON-RPC request (e.g. `tools/call` with tool `get_weather`)
-2. **MCP filter** parses body, validates headers, increments `praxis_mcp_requests_total{method="tools/call"}` **(M1)**
-3. **Praxis routes** request to the matched backend cluster
-4. **On response**, filter records `praxis_mcp_tool_calls_total{tool="get_weather", cluster="weather-mcp", status="ok"}` **(M2)** and observes latency in the histogram **(M3)**
-5. **If rejected** (bad params, missing headers): increments `praxis_mcp_filter_rejections_total{reason="invalid_params"}` **(M4)**
-6. **Prometheus** scrapes `:9902/metrics` via ServiceMonitor
-7. **Grafana / OCP Console** visualize the data
+2. **MCP filter** parses body, validates headers, increments `praxis_mcp_requests_total` **(M1)**
+3. **Router** routes request to the matched backend cluster (weather-mcp, calculator-mcp, translator-mcp)
+4. **On response**, filter records `praxis_mcp_tool_calls_total` **(M2)** and observes latency **(M3)**
+5. **If rejected** (bad params, missing headers): increments `praxis_mcp_filter_rejections_total` **(M4)**
+6. **Prometheus** scrapes `:9902/metrics` via ServiceMonitor every 15s
+7. **Grafana** visualizes with 21-panel dashboard
 
 ---
 
@@ -147,12 +106,6 @@ The Praxis image is built **entirely on the OCP cluster** — no local Rust tool
 bash build/build-on-ocp.sh
 ```
 
-This creates a `BuildConfig` that:
-- Uploads the patched source as build context
-- Compiles Rust inside the builder container
-- Produces a minimal Alpine runtime image
-- Pushes to the internal registry
-
 ---
 
 ## OCP deployment
@@ -160,7 +113,6 @@ This creates a `BuildConfig` that:
 ### What gets deployed
 
 ```bash
-# One command deploys the full stack
 bash deploy/deploy-all.sh
 ```
 
@@ -170,7 +122,7 @@ bash deploy/deploy-all.sh
 | **3 mock MCP servers** | weather-mcp (:3001), calculator-mcp (:3002), translator-mcp (:3003) |
 | **Praxis config** | ConfigMap with 3 backend clusters, MCP filter enabled |
 | **ServiceMonitor** | Prometheus scraping config for `:9902/metrics` |
-| **Grafana dashboard** | Production dashboard JSON for MCP metrics |
+| **Grafana dashboard** | 21-panel production dashboard for MCP metrics |
 
 ### Cluster details
 
@@ -187,7 +139,7 @@ bash deploy/deploy-all.sh
 ```bash
 PRAXIS_URL="https://$(oc get route praxis-ai -n praxis-mcp-test -o jsonpath='{.spec.host}')"
 
-# 1. Successful tool call → increments requests_total + tool_calls_total + duration histogram
+# 1. Successful tool call → increments requests_total + tool_calls_total + duration
 curl -sk -X POST "$PRAXIS_URL/mcp" \
   -H "Content-Type: application/json" \
   -H "x-tenant-id: test-tenant-1" \
@@ -214,21 +166,38 @@ Output from the live cluster:
 
 ```
 # TYPE praxis_mcp_requests_total counter
-praxis_mcp_requests_total{method="tools/list",protocol_version="unknown"} 6
 praxis_mcp_requests_total{method="tools/call",protocol_version="unknown"} 8
+praxis_mcp_requests_total{method="tools/list",protocol_version="unknown"} 6
 praxis_mcp_requests_total{method="tools/call",protocol_version="2025-11-25"} 30
 
 # TYPE praxis_mcp_tool_calls_total counter
-praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",status="ok"} 14
-praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",status="ok"} 3
+praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",transport_status="ok"} 14
+praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",transport_status="ok"} 3
 
 # TYPE praxis_mcp_filter_rejections_total counter
 praxis_mcp_filter_rejections_total{method="tools/call",reason="invalid_params"} 9
+
+# HELP praxis_mcp_tool_call_duration_seconds upstream round-trip time for MCP tool calls
+# TYPE praxis_mcp_tool_call_duration_seconds summary
+praxis_mcp_tool_call_duration_seconds_sum{tool="get_weather",cluster="weather-mcp"} 2.117071506
+praxis_mcp_tool_call_duration_seconds_count{tool="get_weather",cluster="weather-mcp"} 14
+praxis_mcp_tool_call_duration_seconds_sum{tool="translate",cluster="translator-mcp"} 3.570478103
+praxis_mcp_tool_call_duration_seconds_count{tool="translate",cluster="translator-mcp"} 6
+praxis_mcp_tool_call_duration_seconds_sum{tool="detect_language",cluster="translator-mcp"} 1.490611086
+praxis_mcp_tool_call_duration_seconds_count{tool="detect_language",cluster="translator-mcp"} 3
+praxis_mcp_tool_call_duration_seconds_sum{tool="add",cluster="calculator-mcp"} 0.114303136
+praxis_mcp_tool_call_duration_seconds_count{tool="add",cluster="calculator-mcp"} 6
+praxis_mcp_tool_call_duration_seconds_sum{tool="forecast",cluster="weather-mcp"} 0.337710703
+praxis_mcp_tool_call_duration_seconds_count{tool="forecast",cluster="weather-mcp"} 3
+praxis_mcp_tool_call_duration_seconds_sum{tool="factorial",cluster="calculator-mcp"} 0.095212128
+praxis_mcp_tool_call_duration_seconds_count{tool="factorial",cluster="calculator-mcp"} 3
+praxis_mcp_tool_call_duration_seconds_sum{tool="multiply",cluster="calculator-mcp"} 0.080548854
+praxis_mcp_tool_call_duration_seconds_count{tool="multiply",cluster="calculator-mcp"} 3
 ```
 
 ### Metrics dashboard — live from OCP cluster
@@ -238,9 +207,9 @@ praxis_mcp_filter_rejections_total{method="tools/call",reason="invalid_params"} 
 | Metric | Live value |
 |--------|-----------|
 | `praxis_mcp_requests_total` | 44 (6 control plane + 38 data plane) |
-| `praxis_mcp_tool_calls_total` | 38 |
-| `praxis_mcp_tool_call_duration_seconds` (avg) | 205ms |
-| `praxis_mcp_filter_rejections_total` | 9 |
+| `praxis_mcp_tool_calls_total` | 38 (across 7 tools on 3 backends) |
+| `praxis_mcp_tool_call_duration_seconds` (avg) | 205.4ms |
+| `praxis_mcp_filter_rejections_total` | 9 (`invalid_params`) |
 
 ### Verify in Prometheus (OCP Console → Observe → Metrics)
 
@@ -249,18 +218,13 @@ praxis_mcp_tool_calls_total
 ```
 
 ```
-praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",status="ok"} 14
-praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",status="ok"} 6
-praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",status="ok"} 3
-praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",status="ok"} 3
-```
-
-Request rate query:
-```promql
-rate(praxis_mcp_requests_total[5m])
+praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",transport_status="ok"} 14
+praxis_mcp_tool_calls_total{tool="translate",cluster="translator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="add",cluster="calculator-mcp",transport_status="ok"} 6
+praxis_mcp_tool_calls_total{tool="forecast",cluster="weather-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="detect_language",cluster="translator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="factorial",cluster="calculator-mcp",transport_status="ok"} 3
+praxis_mcp_tool_calls_total{tool="multiply",cluster="calculator-mcp",transport_status="ok"} 3
 ```
 
 ### Verify ServiceMonitor is working
@@ -274,27 +238,30 @@ oc get endpoints -n praxis-mcp-test praxis-ai-metrics
 
 ## Implementation details
 
-### Source file: `src/metrics.rs` (411 lines)
+### Source file: `src/metrics.rs` (~490 lines)
 
 ```rust
-// 4 metrics with cardinality bounding
-static MCP_REQUESTS: LazyLock<IntCounterVec> = ...
-static MCP_TOOL_CALLS: LazyLock<IntCounterVec> = ...
-static MCP_TOOL_DURATION: LazyLock<HistogramVec> = ...
-static MCP_REJECTIONS: LazyLock<IntCounterVec> = ...
+// 4 metric name constants
+pub const METRIC_MCP_REQUESTS_TOTAL: &str = "praxis_mcp_requests_total";
+pub const METRIC_MCP_TOOL_CALLS_TOTAL: &str = "praxis_mcp_tool_calls_total";
+pub const METRIC_MCP_TOOL_CALL_DURATION: &str = "praxis_mcp_tool_call_duration_seconds";
+pub const METRIC_MCP_FILTER_REJECTIONS_TOTAL: &str = "praxis_mcp_filter_rejections_total";
+
+// Per-instance state stored in filter_state (not shared filter_metadata)
+pub(crate) struct McpMetricsState { pub start: std::time::Instant, pub tool_name: String }
 
 // 3 recording functions called from mod.rs
-pub(crate) fn record_mcp_request(method: &str, protocol_version: Option<&str>) { ... }
-pub(crate) fn record_tool_call_completed(tool: &str, cluster: &str, status: u16, duration: Duration) { ... }
-pub(crate) fn record_filter_rejection(method: &str, reason: &str) { ... }
+pub fn record_mcp_request(method: &str, protocol_version: &str) { ... }
+pub fn record_tool_call_completed(tool: &str, cluster: &str, transport_status: &str, duration_seconds: f64) { ... }
+pub fn record_filter_rejection(method: &str, reason: &str) { ... }
 ```
 
 ### Design decisions
 
 - **Follows existing Praxis patterns** — same cardinality bounding approach as `llm_metrics.rs`, same label conventions, same test style
-- **No new dependencies** — uses `prometheus` crate already in `Cargo.toml`
+- **No new dependencies** — uses `metrics` crate already in `Cargo.toml`
 - **Tool name capped at 64 chars** — prevents cardinality explosion from malicious inputs
-- **Status mapped to `ok`/`error`** — not raw HTTP codes, to keep cardinality bounded
+- **`transport_status` mapped to `ok`/`error`** — not raw HTTP codes, to keep cardinality bounded; named to clarify it reflects HTTP transport outcome only, not JSON-RPC application success
 - **Build-time patching** — `patch-mod-rs.py` wires metrics into `mod.rs` without forking Praxis
 
 ---

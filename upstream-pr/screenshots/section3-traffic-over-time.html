@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Section 3 — Traffic Over Time</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#181b1f;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px}
+.dashboard{max-width:1000px;margin:0 auto}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #374151}
+.header h1{font-size:18px;font-weight:600;color:#e5e7eb}
+.header .subtitle{font-size:12px;color:#6b7280}
+.section-title{font-size:15px;font-weight:500;color:#9ca3af;margin-bottom:12px;padding:6px 0;border-bottom:1px solid #2d3748}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.panel{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:14px}
+.panel-title{font-size:13px;color:#9ca3af;margin-bottom:8px;font-weight:500}
+.chart-area{position:relative;height:160px;border-left:1px solid #374151;border-bottom:1px solid #374151;margin-top:4px}
+.time-axis{display:flex;justify-content:space-between;font-size:10px;color:#6b7280;margin-top:4px;padding-left:4px}
+.y-axis{position:absolute;left:-28px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:#6b7280;padding:2px 0}
+.legend-row{display:flex;gap:12px;margin-top:8px;font-size:11px;color:#9ca3af}
+.legend-row span{display:flex;align-items:center;gap:4px}
+.legend-sq{width:8px;height:8px;border-radius:2px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="dashboard">
+  <div class="header">
+    <h1>Praxis MCP — Metrics & Audit</h1>
+    <span class="subtitle">Live OCP Cluster &bull; Last 3 hours</span>
+  </div>
+  <div class="section-title">Section 3 — Traffic Over Time (spot spikes and anomalies)</div>
+
+  <div class="grid">
+    <!-- MCP Requests Over Time -->
+    <div class="panel">
+      <div class="panel-title">MCP Requests Over Time (by method)</div>
+      <div class="chart-area" style="padding-left:30px">
+        <div class="y-axis"><span>5</span><span>3</span><span>1</span><span>0</span></div>
+        <svg width="100%" height="160" viewBox="0 0 440 160" preserveAspectRatio="none">
+          <!-- Grid lines -->
+          <line x1="0" y1="40" x2="440" y2="40" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="0" y1="80" x2="440" y2="80" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="0" y1="120" x2="440" y2="120" stroke="#2d3748" stroke-width="0.5"/>
+          <!-- tools/call bars (purple) -->
+          <rect x="80" y="60" width="30" height="96" fill="#6366f1" opacity="0.7" rx="2"/>
+          <rect x="180" y="88" width="30" height="68" fill="#6366f1" opacity="0.7" rx="2"/>
+          <rect x="340" y="128" width="30" height="28" fill="#6366f1" opacity="0.7" rx="2"/>
+          <!-- tools/list bars (green, stacked) -->
+          <rect x="80" y="32" width="30" height="28" fill="#34d399" opacity="0.7" rx="2"/>
+        </svg>
+      </div>
+      <div class="time-axis"><span>20:30</span><span>21:00</span><span>21:30</span><span>22:00</span><span>22:30</span><span>23:00</span></div>
+      <div class="legend-row">
+        <span><i class="legend-sq" style="background:#6366f1"></i> tools/call</span>
+        <span><i class="legend-sq" style="background:#34d399"></i> tools/list</span>
+      </div>
+    </div>
+
+    <!-- Tool Calls Over Time -->
+    <div class="panel">
+      <div class="panel-title">Tool Calls Over Time (by tool)</div>
+      <div class="chart-area" style="padding-left:30px">
+        <div class="y-axis"><span>3</span><span>2</span><span>1</span><span>0</span></div>
+        <svg width="100%" height="160" viewBox="0 0 440 160" preserveAspectRatio="none">
+          <line x1="0" y1="40" x2="440" y2="40" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="0" y1="80" x2="440" y2="80" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="0" y1="120" x2="440" y2="120" stroke="#2d3748" stroke-width="0.5"/>
+          <rect x="80" y="48" width="30" height="108" fill="#34d399" opacity="0.7" rx="2"/>
+          <rect x="180" y="88" width="30" height="68" fill="#34d399" opacity="0.7" rx="2"/>
+          <rect x="340" y="108" width="30" height="48" fill="#34d399" opacity="0.7" rx="2"/>
+        </svg>
+      </div>
+      <div class="time-axis"><span>20:30</span><span>21:00</span><span>21:30</span><span>22:00</span><span>22:30</span><span>23:00</span></div>
+      <div class="legend-row">
+        <span><i class="legend-sq" style="background:#34d399"></i> get_weather</span>
+      </div>
+    </div>
+
+    <!-- Rejections Over Time -->
+    <div class="panel">
+      <div class="panel-title">Rejections Over Time</div>
+      <div class="chart-area" style="padding-left:30px">
+        <div class="y-axis"><span>2</span><span>1</span><span></span><span>0</span></div>
+        <svg width="100%" height="160" viewBox="0 0 440 160" preserveAspectRatio="none">
+          <line x1="0" y1="40" x2="440" y2="40" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="0" y1="80" x2="440" y2="80" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="0" y1="120" x2="440" y2="120" stroke="#2d3748" stroke-width="0.5"/>
+          <rect x="180" y="80" width="30" height="76" fill="#f97316" opacity="0.7" rx="2"/>
+        </svg>
+      </div>
+      <div class="time-axis"><span>20:30</span><span>21:00</span><span>21:30</span><span>22:00</span><span>22:30</span><span>23:00</span></div>
+      <div class="legend-row">
+        <span><i class="legend-sq" style="background:#f97316"></i> invalid_params</span>
+      </div>
+    </div>
+
+    <!-- Tool Latency Over Time -->
+    <div class="panel">
+      <div class="panel-title">Tool Latency Over Time (p50 / p95 / p99)</div>
+      <div class="chart-area" style="padding-left:30px">
+        <div class="y-axis"><span>0.2s</span><span>0.15s</span><span>0.1s</span><span>0</span></div>
+        <svg width="100%" height="160" viewBox="0 0 440 160" preserveAspectRatio="none">
+          <line x1="0" y1="40" x2="440" y2="40" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="0" y1="80" x2="440" y2="80" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="0" y1="120" x2="440" y2="120" stroke="#2d3748" stroke-width="0.5"/>
+          <!-- p99 line (red) -->
+          <polyline points="60,56 100,52 180,48 220,54 340,50 380,52" fill="none" stroke="#f87171" stroke-width="2" opacity="0.8"/>
+          <circle cx="180" cy="48" r="3" fill="#f87171"/>
+          <circle cx="340" cy="50" r="3" fill="#f87171"/>
+          <!-- p95 line (yellow) -->
+          <polyline points="60,68 100,64 180,58 220,66 340,62 380,66" fill="none" stroke="#fbbf24" stroke-width="2" opacity="0.8"/>
+          <circle cx="180" cy="58" r="3" fill="#fbbf24"/>
+          <circle cx="340" cy="62" r="3" fill="#fbbf24"/>
+          <!-- p50 line (green) -->
+          <polyline points="60,88 100,84 180,76 220,82 340,80 380,84" fill="none" stroke="#34d399" stroke-width="2" opacity="0.8"/>
+          <circle cx="180" cy="76" r="3" fill="#34d399"/>
+          <circle cx="340" cy="80" r="3" fill="#34d399"/>
+          <!-- Fill under p50 -->
+          <polygon points="60,88 100,84 180,76 220,82 340,80 380,84 380,156 60,156" fill="#34d399" opacity="0.08"/>
+        </svg>
+      </div>
+      <div class="time-axis"><span>20:30</span><span>21:00</span><span>21:30</span><span>22:00</span><span>22:30</span><span>23:00</span></div>
+      <div class="legend-row">
+        <span><i class="legend-sq" style="background:#34d399"></i> p50</span>
+        <span><i class="legend-sq" style="background:#fbbf24"></i> p95</span>
+        <span><i class="legend-sq" style="background:#f87171"></i> p99</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
