@@ -53,19 +53,19 @@ Here's what that looks like with real data from our OCP test cluster. Both data 
 
 **What the Prometheus panels (Tool Intelligence) tell you:**
 
-![Tool Intelligence — Prometheus panels showing tool call distribution and latency per tool](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section2-tool-intelligence.jpg)
+![Tool Intelligence — Prometheus panels showing tool call distribution and latency per tool](<!-- SCREENSHOT: open your Grafana dashboard, scroll to the "Tool Intelligence" section, take a full-width browser screenshot -->)
 
-The Tool Call Distribution panel says `get_weather=52`, `nonexistent_tool=10`, `calculate=6`, `broken_api=6`, `translate=4`. The Avg Latency by Tool panel says `get_weather=845ms`, `broken_api=91ms`, `calculate=103ms`. Useful — you know get_weather is the most popular tool and it's slower than the others. But you can't dig deeper. You can't ask "which of those 52 calls took 2 seconds?" or "who sent them?" The metric just says "52" — it's a running total.
+The Tool Call Distribution panel says `get_weather=3`. The Avg Latency by Tool panel says `get_weather=0.134s`. Useful — you know get_weather is the active tool and what its average latency looks like. But you can't dig deeper. You can't ask "which of those 3 calls was slowest?" or "who sent them?" The metric just says "3" — it's a running total.
 
 **What the Loki panels (Audit Trail) tell you:**
 
-![Audit Trail — Loki panels showing individual audit events with tenant, tool, duration, and outcome](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section4-audit-trail.jpg)
+![Audit Trail — Loki panels showing individual audit events with tenant, tool, duration, and outcome](<!-- SCREENSHOT: scroll to the "Audit Trail (Loki)" section, take a full-width browser screenshot -->)
 
-The Recent Audit Events panel shows each individual call. One entry reads: `mcp_name="get_weather"`, `mcp_duration_ms=2126`, `tenant="tenant-burst"`, `mcp_cluster="weather-mcp"`, `mcp_upstream_status=200`. That's one specific call — you know *who* made it, *when*, *how long* it took, and *what happened*.
+The Recent Audit Events panel shows each individual call. One entry reads: `mcp_name="get_weather"`, `mcp_duration_ms=153`, `tenant="loki-verify"`, `mcp_cluster="weather-mcp"`, `mcp_upstream_status=200`. That's one specific call — you know *who* made it, *when*, *how long* it took, and *what happened*.
 
-Scroll through the next entries and the story emerges: `tenant-burst` fired 15+ calls in rapid succession, with latencies climbing from 100ms → 321ms → 408ms → … → 2126ms. That burst is why the Avg Tool Latency stat panel shows 597ms — one tenant inflated the average. The metric alone can't tell you that.
+Scroll through the entries and the detail emerges: three completed calls with latencies of 153ms, 118ms, and 130ms — spread across tenants `loki-verify` and `test-tenant-1`. The Avg Tool Latency stat panel shows 0.13s — but only the audit log tells you that `test-tenant-1` made two of those three calls.
 
-**Rejections are the same story.** Prometheus says "11 rejections: 6 invalid_jsonrpc, 5 invalid_params." The Rejections by Tenant panel in Loki says `tenant-bad=4`, `test-tenant-2=1`. Without the audit log, you'd have no idea that `tenant-bad` is responsible for 80% of the `invalid_params` rejections — the Prometheus metric doesn't carry a tenant label.
+**Rejections tell the same story.** Prometheus says "1 rejection: invalid_params." The Rejections by Tenant panel in Loki says `test-tenant-2=1`. Without the audit log, you'd have no idea which tenant was responsible — the Prometheus metric doesn't carry a tenant label.
 
 Without metrics, you don't know something is wrong. Without audit logs, you can't pinpoint who was affected or build the incident timeline.
 
@@ -79,7 +79,7 @@ Both PRs feed a single Grafana dashboard that tells the MCP observability story 
 
 > *"How much MCP traffic is flowing through, and how healthy is it?"*
 
-![Section 1 — MCP Traffic: stat panels showing total requests, tool calls, rejections, and avg latency, plus method distribution and rejection reason pie charts](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section1-mcp-traffic.jpg)
+![Section 1 — MCP Traffic: stat panels showing total requests, tool calls, rejections, and avg latency, plus method distribution and rejection reason pie charts](<!-- SCREENSHOT: Section 1 — the row of 4 stat cards + 2 pie charts + rejection table -->)
 
 | Panel | Data source | Query |
 |-------|------------|-------|
@@ -95,7 +95,7 @@ Both PRs feed a single Grafana dashboard that tells the MCP observability story 
 
 > *"Which tools are hot? Which backends are they hitting? What's the latency profile?"*
 
-![Section 2 — Tool Intelligence: bar gauges showing tool call distribution, pie chart for cluster distribution, p95 and avg latency per tool](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section2-tool-intelligence.jpg)
+![Section 2 — Tool Intelligence: bar gauges showing tool call distribution, pie chart for cluster distribution, p95 and avg latency per tool](<!-- SCREENSHOT: Section 2 — tool distribution bars + cluster pie + latency gauges -->)
 
 | Panel | Data source | Query |
 |-------|------------|-------|
@@ -109,7 +109,7 @@ Both PRs feed a single Grafana dashboard that tells the MCP observability story 
 
 > *"Is anything changing? Are we seeing spikes, degradation, or new patterns?"*
 
-![Section 3 — Traffic Over Time: stacked bar charts for requests and tool calls over time, plus p50/p95/p99 latency curves](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section3-traffic-over-time.jpg)
+![Section 3 — Traffic Over Time: stacked bar charts for requests and tool calls over time, plus p50/p95/p99 latency curves](<!-- SCREENSHOT: Section 3 — 4 time series panels showing requests, tool calls, rejections, and latency over time -->)
 
 | Panel | Data source | Query |
 |-------|------------|-------|
@@ -122,7 +122,7 @@ Both PRs feed a single Grafana dashboard that tells the MCP observability story 
 
 > *"What exactly happened? Show me the individual events."*
 
-![Section 4 — Audit Trail: bar gauge of audit events by outcome, pie chart of rejection reasons, bar gauge of rejections by tenant, audit volume time series, and raw log stream](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section4-audit-trail.jpg)
+![Section 4 — Audit Trail: bar gauge of audit events by outcome, pie chart of rejection reasons, bar gauge of rejections by tenant, audit volume time series, and raw log stream](<!-- SCREENSHOT: Section 4 — Loki audit panels showing events by outcome, rejections by reason/tenant, volume over time, and raw log stream -->)
 
 | Panel | Data source | Query |
 |-------|------------|-------|
@@ -244,29 +244,26 @@ The audit filter uses `filter_state` to carry metadata across the request/respon
 
 ### Test setup
 
-Deployed on a fresh AWS OCP 4.17 cluster with 3 mock MCP backends (weather, calculator, translator). The `install.sh` script builds Praxis from upstream source with both PRs patched, deploys the full stack, and runs a traffic generator that sends ~94 requests covering all event types.
+Deployed on a fresh AWS OCP 4.17 cluster with a mock MCP backend (weather). The `install.sh` script builds Praxis from upstream source with both PRs patched, deploys the full stack, and runs verification requests covering all three audit event types.
 
 ### Live Prometheus metrics (`:9902/metrics`)
 
 ```
 # All 4 metrics emitting:
-praxis_mcp_requests_total{method="tools/call",protocol_version="2024-11-05"} 83
-praxis_mcp_requests_total{method="tools/list",protocol_version="2024-11-05"} 3
-praxis_mcp_requests_total{method="initialize",protocol_version="2024-11-05"} 2
-praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",transport_status="ok"} 52
-praxis_mcp_tool_calls_total{tool="calculate",cluster="weather-mcp",transport_status="ok"} 6
-praxis_mcp_tool_call_duration_seconds_bucket{tool="get_weather",cluster="weather-mcp",le="0.1"} 48
-praxis_mcp_filter_rejections_total{method="tools/call",reason="invalid_params"} 5
-praxis_mcp_filter_rejections_total{method="other",reason="invalid_jsonrpc"} 6
+praxis_mcp_requests_total{method="tools/call",protocol_version="2024-11-05"} 4
+praxis_mcp_requests_total{method="tools/list",protocol_version="2024-11-05"} 1
+praxis_mcp_tool_calls_total{tool="get_weather",cluster="weather-mcp",transport_status="ok"} 3
+praxis_mcp_tool_call_duration_seconds_bucket{tool="get_weather",cluster="weather-mcp",le="0.25"} 3
+praxis_mcp_filter_rejections_total{method="tools/call",reason="invalid_params"} 1
 ```
 
 ### Live audit log events (pod stdout → Loki)
 
-**Completed tool call** (200 OK, 101ms):
+**Completed tool call** (200 OK, 130ms):
 ```
 mcp.call.completed log_type="mcp_audit" mcp_method="tools/call"
   mcp_name="get_weather" mcp_outcome="ok" mcp_upstream_status=200
-  mcp_duration_ms=101 mcp_cluster="weather-mcp" tenant="test-tenant-1"
+  mcp_duration_ms=130 mcp_cluster="weather-mcp" tenant="test-tenant-1"
 ```
 
 **Rejected call** (missing tool name):
