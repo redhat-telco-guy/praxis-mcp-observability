@@ -53,13 +53,13 @@ Here's what that looks like with real data from our OCP test cluster. Both data 
 
 **What the Prometheus panels (Tool Intelligence) tell you:**
 
-![Tool Intelligence — Prometheus panels showing tool call distribution and latency per tool](<!-- SCREENSHOT: open your Grafana dashboard, scroll to the "Tool Intelligence" section, take a full-width browser screenshot -->)
+![Tool Intelligence — Prometheus panels showing tool call distribution and latency per tool](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section2-tool-intelligence.jpg)
 
 The Tool Call Distribution panel says `get_weather=3`. The Avg Latency by Tool panel says `get_weather=0.134s`. Useful — you know get_weather is the active tool and what its average latency looks like. But you can't dig deeper. You can't ask "which of those 3 calls was slowest?" or "who sent them?" The metric just says "3" — it's a running total.
 
 **What the Loki panels (Audit Trail) tell you:**
 
-![Audit Trail — Loki panels showing individual audit events with tenant, tool, duration, and outcome](<!-- SCREENSHOT: scroll to the "Audit Trail (Loki)" section, take a full-width browser screenshot -->)
+![Audit Trail — Loki panels showing individual audit events with tenant, tool, duration, and outcome](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section4-audit-trail.jpg)
 
 The Recent Audit Events panel shows each individual call. One entry reads: `mcp_name="get_weather"`, `mcp_duration_ms=153`, `tenant="loki-verify"`, `mcp_cluster="weather-mcp"`, `mcp_upstream_status=200`. That's one specific call — you know *who* made it, *when*, *how long* it took, and *what happened*.
 
@@ -79,7 +79,7 @@ Both PRs feed a single Grafana dashboard that tells the MCP observability story 
 
 > *"How much MCP traffic is flowing through, and how healthy is it?"*
 
-![Section 1 — MCP Traffic: stat panels showing total requests, tool calls, rejections, and avg latency, plus method distribution and rejection reason pie charts](<!-- SCREENSHOT: Section 1 — the row of 4 stat cards + 2 pie charts + rejection table -->)
+![Section 1 — MCP Traffic: stat panels showing total requests, tool calls, rejections, and avg latency, plus method distribution and rejection reason pie charts](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section1-mcp-traffic.jpg)
 
 | Panel | Data source | Query |
 |-------|------------|-------|
@@ -95,7 +95,7 @@ Both PRs feed a single Grafana dashboard that tells the MCP observability story 
 
 > *"Which tools are hot? Which backends are they hitting? What's the latency profile?"*
 
-![Section 2 — Tool Intelligence: bar gauges showing tool call distribution, pie chart for cluster distribution, p95 and avg latency per tool](<!-- SCREENSHOT: Section 2 — tool distribution bars + cluster pie + latency gauges -->)
+![Section 2 — Tool Intelligence: bar gauges showing tool call distribution, pie chart for cluster distribution, p95 and avg latency per tool](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section2-tool-intelligence.jpg)
 
 | Panel | Data source | Query |
 |-------|------------|-------|
@@ -109,7 +109,7 @@ Both PRs feed a single Grafana dashboard that tells the MCP observability story 
 
 > *"Is anything changing? Are we seeing spikes, degradation, or new patterns?"*
 
-![Section 3 — Traffic Over Time: stacked bar charts for requests and tool calls over time, plus p50/p95/p99 latency curves](<!-- SCREENSHOT: Section 3 — 4 time series panels showing requests, tool calls, rejections, and latency over time -->)
+![Section 3 — Traffic Over Time: stacked bar charts for requests and tool calls over time, plus p50/p95/p99 latency curves](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section3-traffic-over-time.jpg)
 
 | Panel | Data source | Query |
 |-------|------------|-------|
@@ -122,7 +122,7 @@ Both PRs feed a single Grafana dashboard that tells the MCP observability story 
 
 > *"What exactly happened? Show me the individual events."*
 
-![Section 4 — Audit Trail: bar gauge of audit events by outcome, pie chart of rejection reasons, bar gauge of rejections by tenant, audit volume time series, and raw log stream](<!-- SCREENSHOT: Section 4 — Loki audit panels showing events by outcome, rejections by reason/tenant, volume over time, and raw log stream -->)
+![Section 4 — Audit Trail: bar gauge of audit events by outcome, pie chart of rejection reasons, bar gauge of rejections by tenant, audit volume time series, and raw log stream](https://raw.githubusercontent.com/redhat-telco-guy/praxis-mcp-observability/feat/audit-logging/upstream-pr/screenshots/section4-audit-trail.jpg)
 
 | Panel | Data source | Query |
 |-------|------------|-------|
